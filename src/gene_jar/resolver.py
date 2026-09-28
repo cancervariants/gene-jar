@@ -159,6 +159,59 @@ class GeneJar:
 
         return identifiers
 
+    @staticmethod
+    def _has_qualifier(value: str | list[str]) -> bool:
+        """Return whether a qualifier value is non-null and non-empty."""
+        if isinstance(value, list):
+            return len(value) > 0
+
+        return pd.notna(value)
+
+    def lookup(
+        self,
+        symbol: str,
+        symbol_category: str = "Primary Gene Symbol",
+        match_type: MatchType = MatchType.IDENTICAL,
+    ) -> pd.DataFrame:
+        """Lookup a gene symbol from a specific symbol category.
+
+        Searches both the symbol and primary gene symbol columns.
+
+        :param symbol: Gene symbol to search for.
+        :param symbol_category: Symbol category to search.
+        :param match_type: Type of matching to perform.
+        :return: Matching rows.
+        """
+        if symbol_category not in self.dfs:
+            message = (
+                f"Unknown symbol category '{symbol_category}'. "
+                f"Available: {sorted(self.dfs)}"
+            )
+            raise ValueError(message)
+
+        match_type = MatchType(match_type)
+        df = self.dfs[symbol_category]
+        target = symbol.casefold()
+
+        if symbol_category == "Primary Gene Symbol":
+            symbol_column = "gene_symbol"
+        else:
+            symbol_column = "alias_symbol"
+
+        symbols = df[symbol_column].astype("string").str.casefold()
+        primary_symbols = df["primary_gene_symbol"].astype("string").str.casefold()
+
+        if match_type is MatchType.IDENTICAL:
+            mask = symbols.eq(target).fillna(False) | primary_symbols.eq(target).fillna(
+                False
+            )
+        else:
+            mask = symbols.str.contains(
+                target, regex=False, na=False
+            ) | primary_symbols.str.contains(target, regex=False, na=False)
+
+        return df.loc[mask].copy()
+
     def resolve(
         self,
         symbol: str,
@@ -179,8 +232,6 @@ class GeneJar:
         """
         match_type = MatchType(match_type)
         target = symbol.casefold()
-        matches = []
-
         matches = []
 
         for category, df in self.dfs.items():
@@ -210,7 +261,7 @@ class GeneJar:
 
             if qualifier_column is not None:
                 category_matches["qualifier"] = [
-                    {qualifier_column: value} if pd.notna(value) else {}
+                    {qualifier_column: value} if self._has_qualifier(value) else {}
                     for value in category_matches[qualifier_column]
                 ]
             else:
