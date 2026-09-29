@@ -2,7 +2,7 @@
 
 from importlib.metadata import version as _version
 
-from gene_jar.resolver import GeneJar, MatchType
+from gene_jar.resolver import GeneJar, MatchType, SearchColumn
 
-__all__ = ["GeneJar", "MatchType"]
+__all__ = ["GeneJar", "MatchType", "SearchColumn"]
 __version__ = _version("gene-jar")

@@ -14,6 +14,14 @@ class MatchType(StrEnum):
     PARTIAL = "partial"
 
 
+class SearchColumn(StrEnum):
+    """Gene symbol columns to search."""
+
+    BOTH = "both"
+    ALIAS = "gene_symbol"
+    PRIMARY = "primary_gene_symbol"
+
+
 @dataclass
 class GeneMatch:
     """A single resolved gene and its associated identifiers."""
@@ -172,14 +180,14 @@ class GeneJar:
         symbol: str,
         symbol_category: str = "Primary Gene Symbol",
         match_type: MatchType = MatchType.IDENTICAL,
+        search_column: SearchColumn = SearchColumn.BOTH,
     ) -> pd.DataFrame:
         """Lookup a gene symbol from a specific symbol category.
-
-        Searches both the symbol and primary gene symbol columns.
 
         :param symbol: Gene symbol to search for.
         :param symbol_category: Symbol category to search.
         :param match_type: Type of matching to perform.
+        :param search_column: Symbol column(s) to search.
         :return: Matching rows.
         """
         if symbol_category not in self.dfs:
@@ -190,6 +198,8 @@ class GeneJar:
             raise ValueError(message)
 
         match_type = MatchType(match_type)
+        search_column = SearchColumn(search_column)
+
         df = self.dfs[symbol_category]
         target = symbol.casefold()
 
@@ -202,13 +212,22 @@ class GeneJar:
         primary_symbols = df["primary_gene_symbol"].astype("string").str.casefold()
 
         if match_type is MatchType.IDENTICAL:
-            mask = symbols.eq(target).fillna(False) | primary_symbols.eq(target).fillna(
-                False
-            )
+            symbol_mask = symbols.eq(target).fillna(False)
+            primary_mask = primary_symbols.eq(target).fillna(False)
         else:
-            mask = symbols.str.contains(
-                target, regex=False, na=False
-            ) | primary_symbols.str.contains(target, regex=False, na=False)
+            symbol_mask = symbols.str.contains(target, regex=False, na=False)
+            primary_mask = primary_symbols.str.contains(
+                target,
+                regex=False,
+                na=False,
+            )
+
+        if search_column is SearchColumn.ALIAS:
+            mask = symbol_mask
+        elif search_column is SearchColumn.PRIMARY:
+            mask = primary_mask
+        else:
+            mask = symbol_mask | primary_mask
 
         return df.loc[mask].copy()
 
