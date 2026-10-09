@@ -6,8 +6,6 @@ from typing import Any, ClassVar
 
 import pandas as pd
 
-PRIMARY_GENE_SYMBOL_CATEGORY = "Primary Gene Symbol"
-
 
 class MatchType(StrEnum):
     """Match options"""
@@ -22,6 +20,25 @@ class SearchColumn(StrEnum):
     BOTH = "both"
     ALIAS = "gene_symbol"
     PRIMARY = "primary_gene_symbol"
+
+
+class SymbolCategory(StrEnum):
+    """Gene symbol relationship categories."""
+
+    PRIMARY = "Primary Gene Symbol"
+    ORTHOLOG = "Ortholog Symbol"
+    CLONE_NAME = "Clone Name Symbol"
+    PHENOTYPE = "Phenotype Symbol"
+    GENE_GROUP = "Gene Group Symbol"
+    GENE_IDENTIFIER = "Gene Identifier Symbol"
+    WITHDRAWN_ORTHOLOG = "Withdrawn Ortholog Symbol"
+    RELATED_GENE = "Related Gene Symbol"
+    GENE_INTERACTION = "Gene Interaction Symbol"
+    GENE_NEIGHBOR = "Gene Neighbor Symbol"
+    PLACEHOLDER = "Placeholder Symbol"
+    PREVIOUS = "Previous Symbol"
+    PROTEIN_MASS = "Protein Mass Symbol"
+    ALTERNATE_ABBREVIATION = "Alternate Abbreviation Symbol"
 
 
 @dataclass
@@ -62,21 +79,21 @@ class GeneJar:
     :param alternate_abbreviation_df: DataFrame containing alternate abbreviation symbols
     """
 
-    RANK_ORDER: ClassVar[list[str]] = [
-        "Primary Gene Symbol",
-        "Previous Symbol",
-        "Clone Name Symbol",
-        "Gene Identifier Symbol",
-        "Placeholder Symbol",
-        "Ortholog Symbol",
-        "Alternate Abbreviation Symbol",
-        "Withdrawn Ortholog Symbol",
-        "Phenotype Symbol",
-        "Gene Group Symbol",
-        "Protein Mass Symbol",
-        "Related Gene Symbol",
-        "Gene Neighbor Symbol",
-        "Gene Interaction Symbol",
+    RANK_ORDER: ClassVar[list[SymbolCategory]] = [
+        SymbolCategory.PRIMARY,
+        SymbolCategory.PREVIOUS,
+        SymbolCategory.CLONE_NAME,
+        SymbolCategory.GENE_IDENTIFIER,
+        SymbolCategory.PLACEHOLDER,
+        SymbolCategory.ORTHOLOG,
+        SymbolCategory.ALTERNATE_ABBREVIATION,
+        SymbolCategory.WITHDRAWN_ORTHOLOG,
+        SymbolCategory.PHENOTYPE,
+        SymbolCategory.GENE_GROUP,
+        SymbolCategory.PROTEIN_MASS,
+        SymbolCategory.RELATED_GENE,
+        SymbolCategory.GENE_NEIGHBOR,
+        SymbolCategory.GENE_INTERACTION,
     ]
 
     def __init__(
@@ -100,48 +117,48 @@ class GeneJar:
         """Initialize with dataframes.
         primary_df and ortholog_df must have columns: 'gene_symbol', 'primary_gene_symbol'
         """
-        self.dfs = {
-            "Primary Gene Symbol": primary_df,
-            "Ortholog Symbol": ortholog_df,
-            "Clone Name Symbol": flj_clone_df,
-            "Phenotype Symbol": phenotype_df,
-            "Gene Group Symbol": hgnc_gene_group_df,
-            "Gene Identifier Symbol": gene_id_df,
-            "Withdrawn Ortholog Symbol": mgi_withdrawn_df,
-            "Related Gene Symbol": ncbi_related_gene_df,
-            "Gene Interaction Symbol": ncbi_gene_interaction_df,
-            "Gene Neighbor Symbol": ncbi_gene_neighbor_df,
-            "Placeholder Symbol": placeholder_df,
-            "Previous Symbol": previous_df,
-            "Protein Mass Symbol": protein_mass_df,
-            "Alternate Abbreviation Symbol": alternate_abbreviation_df,
+        self.dfs: dict[SymbolCategory, pd.DataFrame] = {
+            SymbolCategory.PRIMARY: primary_df,
+            SymbolCategory.ORTHOLOG: ortholog_df,
+            SymbolCategory.CLONE_NAME: flj_clone_df,
+            SymbolCategory.PHENOTYPE: phenotype_df,
+            SymbolCategory.GENE_GROUP: hgnc_gene_group_df,
+            SymbolCategory.GENE_IDENTIFIER: gene_id_df,
+            SymbolCategory.WITHDRAWN_ORTHOLOG: mgi_withdrawn_df,
+            SymbolCategory.RELATED_GENE: ncbi_related_gene_df,
+            SymbolCategory.GENE_INTERACTION: ncbi_gene_interaction_df,
+            SymbolCategory.GENE_NEIGHBOR: ncbi_gene_neighbor_df,
+            SymbolCategory.PLACEHOLDER: placeholder_df,
+            SymbolCategory.PREVIOUS: previous_df,
+            SymbolCategory.PROTEIN_MASS: protein_mass_df,
+            SymbolCategory.ALTERNATE_ABBREVIATION: alternate_abbreviation_df,
         }
 
-        self.column_map = {
-            "Primary Gene Symbol": ("primary_gene_symbol"),
+        self.column_map: dict[SymbolCategory, str] = {
+            SymbolCategory.PRIMARY: "primary_gene_symbol",
         }
 
-        self.qualifier_map = {
-            "Ortholog Symbol": "Matching Species",
-            "Phenotype Symbol": "Matching Phenotype Symbol",
-            "Gene Group Symbol": "Matching Abbreviation",
-            "Gene Identifier Symbol": "Identifier Match Source",
-            "Related Gene Symbol": "Relationship",
-            "Gene Neighbor Symbol": "neighbor_gene_type",
-            "Placeholder Symbol": "Placeholder Symbol Match Type",
-            "Previous Symbol": "Previous Symbol Source",
+        self.qualifier_map: dict[SymbolCategory, str] = {
+            SymbolCategory.ORTHOLOG: "Matching Species",
+            SymbolCategory.PHENOTYPE: "Matching Phenotype Symbol",
+            SymbolCategory.GENE_GROUP: "Matching Abbreviation",
+            SymbolCategory.GENE_IDENTIFIER: "Identifier Match Source",
+            SymbolCategory.RELATED_GENE: "Relationship",
+            SymbolCategory.GENE_NEIGHBOR: "neighbor_gene_type",
+            SymbolCategory.PLACEHOLDER: "Placeholder Symbol Match Type",
+            SymbolCategory.PREVIOUS: "Previous Symbol Source",
         }
 
         for category in self.dfs:
             self.column_map.setdefault(category, "alias_symbol")
 
-        self.rank_map = {
+        self.rank_map: dict[SymbolCategory, int] = {
             category: rank for rank, category in enumerate(self.RANK_ORDER)
         }
 
     def symbol_categories(self) -> list[str]:
-        """Return the valid category names accepted by resolve()."""
-        return sorted(self.dfs)
+        """Return the valid gene symbol category names."""
+        return sorted(category.value for category in SymbolCategory)
 
     @staticmethod
     def _identifier_set(
@@ -186,7 +203,7 @@ class GeneJar:
     def lookup(
         self,
         symbol: str,
-        symbol_category: str = PRIMARY_GENE_SYMBOL_CATEGORY,
+        symbol_category: SymbolCategory = SymbolCategory.PRIMARY,
         match_type: MatchType = MatchType.IDENTICAL,
         search_column: SearchColumn = SearchColumn.BOTH,
     ) -> pd.DataFrame:
@@ -199,20 +216,14 @@ class GeneJar:
         :return: Matching rows.
         :raises ValueError: If symbol_category, match_type, or search_column is invalid.
         """
-        if symbol_category not in self.dfs:
-            message = (
-                f"Unknown symbol category '{symbol_category}'. "
-                f"Available: {sorted(self.dfs)}"
-            )
-            raise ValueError(message)
-
+        symbol_category = SymbolCategory(symbol_category)
         match_type = MatchType(match_type)
         search_column = SearchColumn(search_column)
 
         df = self.dfs[symbol_category]
         target = symbol.casefold()
 
-        if symbol_category == PRIMARY_GENE_SYMBOL_CATEGORY:
+        if symbol_category == SymbolCategory.PRIMARY:
             symbol_column = "gene_symbol"
         else:
             symbol_column = "alias_symbol"
@@ -282,7 +293,7 @@ class GeneJar:
                 continue
 
             # Record exactly why this row matched.
-            category_matches["matched_category"] = category
+            category_matches["matched_category"] = category.value
             category_matches["matched_symbol"] = category_matches[symbol_column]
 
             qualifier_column = self.qualifier_map.get(category)
@@ -328,7 +339,7 @@ class GeneJar:
         ):
             matched_categories = sorted(
                 group["matched_category"].dropna().unique(),
-                key=lambda category: self.rank_map[category],
+                key=lambda category: self.rank_map[SymbolCategory(category)],
             )
 
             best_category = matched_categories[0]
@@ -353,7 +364,7 @@ class GeneJar:
                     "matched_symbol": matched_symbols,
                     "matched_categories": matched_categories,
                     "relationship_count": len(matched_categories),
-                    "_category_rank": self.rank_map[best_category],
+                    "_category_rank": self.rank_map[SymbolCategory(best_category)],
                 }
             )
 
