@@ -13,6 +13,8 @@ Given a gene symbol, this package:
 - provides relationships between the gene symbols and their genes, when available
 - provides more detailed information when given the relationship type with the gene symbol
 
+Relationship rank was determined using a test set of ambiguous gene symbols and the highest accurate resolution rate. See [gene jar analysis repo](https://github.com/cancervariants/gene-jar-analysis/tree/09ecaf9fdae49915a6fd35a6830b46c6ae182e2a/analysis/gene_ids_in_lit)
+
 Resources used for annotations include:
 [Ensembl](https://www.ensembl.org/index.html)
 [HGNC](https://www.genenames.org/)
