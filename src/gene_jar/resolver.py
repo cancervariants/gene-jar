@@ -197,6 +197,7 @@ class GeneJar:
         :param match_type: Type of matching to perform.
         :param search_column: Symbol column(s) to search.
         :return: Matching rows.
+        :raises ValueError: If symbol_category, match_type, or search_column is invalid.
         """
         if symbol_category not in self.dfs:
             message = (
