@@ -169,7 +169,13 @@ class GeneJar:
 
     @staticmethod
     def _has_qualifier(value: str | list[str]) -> bool:
-        """Return whether a qualifier value is non-null and non-empty."""
+        """Return whether a qualifier value is non-null and non-empty.
+
+        :param value: Qualifier value to check.
+        :type value: str | list[str]
+        :return: True if a list is non-empty or a scalar value is non-null.
+        :rtype: bool
+        """
         if isinstance(value, list):
             return len(value) > 0
 
