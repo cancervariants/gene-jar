@@ -6,6 +6,8 @@ from typing import Any, ClassVar
 
 import pandas as pd
 
+PRIMARY_GENE_SYMBOL_CATEGORY = "Primary Gene Symbol"
+
 
 class MatchType(StrEnum):
     """Match options"""
@@ -184,7 +186,7 @@ class GeneJar:
     def lookup(
         self,
         symbol: str,
-        symbol_category: str = "Primary Gene Symbol",
+        symbol_category: str = PRIMARY_GENE_SYMBOL_CATEGORY,
         match_type: MatchType = MatchType.IDENTICAL,
         search_column: SearchColumn = SearchColumn.BOTH,
     ) -> pd.DataFrame:
@@ -209,7 +211,7 @@ class GeneJar:
         df = self.dfs[symbol_category]
         target = symbol.casefold()
 
-        if symbol_category == "Primary Gene Symbol":
+        if symbol_category == PRIMARY_GENE_SYMBOL_CATEGORY:
             symbol_column = "gene_symbol"
         else:
             symbol_column = "alias_symbol"
