@@ -359,6 +359,7 @@ def test_resolve_invalid_match_type(gene_jar_factory, primary_df):
 def test_lookup_search_columns(
     gene_jar_factory,
     search_column,
+    expected_symbols,
 ):
     """Test lookup using alias, primary, or both columns."""
     previous_df = pd.DataFrame(
@@ -376,13 +377,7 @@ def test_lookup_search_columns(
         search_column=search_column,
     )
 
-    assert result["alias_symbol"].tolist() == (
-        ["SHARED"]
-        if search_column is SearchColumn.ALIAS
-        else ["OTHER"]
-        if search_column is SearchColumn.PRIMARY
-        else ["SHARED", "OTHER"]
-    )
+    assert result["primary_gene_symbol"].tolist() == expected_symbols
 
 
 def test_lookup_partial_match(gene_jar_factory, primary_df):
