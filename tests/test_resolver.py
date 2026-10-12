@@ -352,8 +352,8 @@ def test_resolve_invalid_match_type(gene_jar_factory, primary_df):
     ("search_column", "expected_symbols"),
     [
         (SearchColumn.ALIAS, ["GENE_A"]),
-        (SearchColumn.PRIMARY, ["GENE_B"]),
-        (SearchColumn.BOTH, ["GENE_A", "GENE_B"]),
+        (SearchColumn.PRIMARY, ["SHARED"]),
+        (SearchColumn.BOTH, ["GENE_A", "SHARED"]),
     ],
 )
 def test_lookup_search_columns(
