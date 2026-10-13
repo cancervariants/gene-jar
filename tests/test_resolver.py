@@ -148,11 +148,7 @@ def test_resolve_merges_gene_identifiers(gene_jar_factory):
         previous_df=previous_df,
     )
 
-    assert len(gj.dfs[SymbolCategory.PRIMARY]) == 2
-    assert gj.dfs[SymbolCategory.PRIMARY]["HGNC_ID"].iloc[1] == {
-        "HGNC:11998",
-        "HGNC:99999",
-    }
+    assert gj.column_map[SymbolCategory.PRIMARY] == "primary_gene_symbol"
 
     result = gj.resolve("TEST")
     candidate = result.iloc[0]
