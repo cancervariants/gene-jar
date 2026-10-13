@@ -151,6 +151,12 @@ def test_resolve_merges_gene_identifiers(gene_jar_factory):
     result = gj.resolve("TEST")
     candidate = result.iloc[0]
 
+    print("\nPrimary records:")  # noqa: T201
+    print(gj.dfs[SymbolCategory.PRIMARY][["primary_gene_symbol", "HGNC_ID"]])  # noqa: T201
+
+    print("\nResolved candidates:")  # noqa: T201
+    print(result[["primary_gene_symbol", "HGNC_ID", "NCBI_ID", "ENSG_ID"]])  # noqa: T201
+
     expected_hgnc = {"HGNC:11998", "HGNC:99999"}
     expected_ncbi = {"7157", "9999"}
     expected_ensg = {
