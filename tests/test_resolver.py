@@ -111,6 +111,71 @@ def test_resolve_primary_gene_identifiers(gene_jar_factory, primary_df):
     assert candidate["ENSG_ID"] == {"ENSG00000141510"}
 
 
+def test_resolve_merges_gene_identifiers(gene_jar_factory):
+    """Test identifier merging across rows and symbol categories."""
+    primary_df = pd.DataFrame(
+        {
+            "gene_symbol": ["TEST", "TEST"],
+            "primary_gene_symbol": ["TP53", "TP53"],
+            "HGNC_ID": [
+                {"HGNC:11998"},
+                {"HGNC:11998", "HGNC:99999"},
+            ],
+            "NCBI_ID": [
+                {"7157"},
+                set(),
+            ],
+            "ENSG_ID": [
+                {"ENSG00000141510"},
+                None,
+            ],
+        }
+    )
+
+    previous_df = pd.DataFrame(
+        {
+            "alias_symbol": ["TEST"],
+            "primary_gene_symbol": ["TP53"],
+            "HGNC_ID": [{"HGNC:11998"}],
+            "NCBI_ID": [{"7157", "9999"}],
+            "ENSG_ID": [{"ENSG00000141510", "ENSG00000999999"}],
+        }
+    )
+
+    gj = gene_jar_factory(
+        primary_df=primary_df,
+        previous_df=previous_df,
+    )
+
+    result = gj.resolve("TEST")
+    candidate = result.iloc[0]
+
+    expected_hgnc = {"HGNC:11998", "HGNC:99999"}
+    expected_ncbi = {"7157", "9999"}
+    expected_ensg = {
+        "ENSG00000141510",
+        "ENSG00000999999",
+    }
+
+    assert len(result) == 1
+    assert candidate["primary_gene_symbol"] == "TP53"
+    assert candidate["HGNC_ID"] == expected_hgnc
+    assert candidate["NCBI_ID"] == expected_ncbi
+    assert candidate["ENSG_ID"] == expected_ensg
+
+    ambiguity = gj.ambiguity_check("TEST")
+
+    assert ambiguity.is_ambiguous is False
+    assert len(ambiguity.gene_matches) == 1
+
+    gene_match = ambiguity.gene_matches[0]
+
+    assert gene_match.primary_gene_symbol == "TP53"
+    assert gene_match.hgnc_id == expected_hgnc
+    assert gene_match.ncbi_id == expected_ncbi
+    assert gene_match.ensg_id == expected_ensg
+
+
 def test_resolve_is_case_insensitive(gene_jar_factory, primary_df):
     """Test that symbol matching ignores capitalization."""
     gj = gene_jar_factory(primary_df=primary_df)
