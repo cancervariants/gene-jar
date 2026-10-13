@@ -6,7 +6,7 @@
 [![Actions status](https://github.com/cancervariants/gene-jar/actions/workflows/checks.yaml/badge.svg)](https://github.com/cancervariants/gene-jar/actions/checks.yaml)
 
 <!-- description -->
-This resource is useful for resolving ambiguous gene symbols powered by thousands of annotations characterizing the relationships between genes and their symbols.
+This resource is useful for resolving ambiguous gene symbols powered by thousands of annotations characterizing the relationships between genes and their symbols. Please see [quickstart notebook](gene_jar_example_use.ipynb) with example usage
 
 Given a gene symbol, this package:
 - finds all genes with this symbol as an alias or primary gene symbol
@@ -25,10 +25,6 @@ Resources used for annotations include:
 [Uniprot](https://www.uniprot.org/)
 [Mouse Genome Informatics](https://www.informatics.jax.org/)
 <!-- /description -->
-
----
-
-**[Documentation](https://gene-jar.readthedocs.io/stable/)** · [Installation](https://gene-jar.readthedocs.io/stable/install.html) · [Usage](https://gene-jar.readthedocs.io/stable/usage.html) · [API reference](https://gene-jar.readthedocs.io/stable/reference/index.html)
 
 ---
 
