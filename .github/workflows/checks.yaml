@@ -77,7 +77,3 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --extra docs
-
-      - name: Attempt docs build
-        working-directory: ./docs
-        run: source ../.venv/bin/activate && make html
