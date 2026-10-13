@@ -113,9 +113,9 @@ def test_resolve_primary_gene_identifiers(gene_jar_factory, primary_df):
 
 def test_resolve_merges_gene_identifiers(gene_jar_factory):
     """Test identifier merging across rows and symbol categories."""
-    primary_df = pd.DataFrame(
+    previous_df = pd.DataFrame(
         {
-            "gene_symbol": ["TEST", "TEST"],
+            "alias_symbol": ["TEST", "TEST"],
             "primary_gene_symbol": ["TP53", "TP53"],
             "HGNC_ID": [
                 {"HGNC:11998"},
@@ -129,26 +129,25 @@ def test_resolve_merges_gene_identifiers(gene_jar_factory):
                 {"ENSG00000141510"},
                 None,
             ],
+            "Previous Symbol Source": ["HGNC", "NCBI"],
         }
     )
 
-    previous_df = pd.DataFrame(
+    ortholog_df = pd.DataFrame(
         {
             "alias_symbol": ["TEST"],
             "primary_gene_symbol": ["TP53"],
             "HGNC_ID": [{"HGNC:11998"}],
             "NCBI_ID": [{"7157", "9999"}],
             "ENSG_ID": [{"ENSG00000141510", "ENSG00000999999"}],
-            "Previous Symbol Source": ["HGNC"],
+            "Matching Species": [["mouse", "rat"]],
         }
     )
 
     gj = gene_jar_factory(
-        primary_df=primary_df,
         previous_df=previous_df,
+        ortholog_df=ortholog_df,
     )
-
-    assert gj.column_map[SymbolCategory.PRIMARY] == "primary_gene_symbol"
 
     result = gj.resolve("TEST")
     candidate = result.iloc[0]
