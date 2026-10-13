@@ -139,6 +139,7 @@ def test_resolve_merges_gene_identifiers(gene_jar_factory):
             "HGNC_ID": [{"HGNC:11998"}],
             "NCBI_ID": [{"7157", "9999"}],
             "ENSG_ID": [{"ENSG00000141510", "ENSG00000999999"}],
+            "Previous Symbol Source": ["HGNC"],
         }
     )
 
