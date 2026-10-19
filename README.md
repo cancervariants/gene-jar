@@ -3,15 +3,18 @@
 [![image](https://img.shields.io/pypi/v/gene-jar.svg)](https://pypi.python.org/pypi/gene-jar)
 [![image](https://img.shields.io/pypi/l/gene-jar.svg)](https://pypi.python.org/pypi/gene-jar)
 [![image](https://img.shields.io/pypi/pyversions/gene-jar.svg)](https://pypi.python.org/pypi/gene-jar)
+
 [![Actions status](https://github.com/cancervariants/gene-jar/actions/workflows/checks.yaml/badge.svg)](https://github.com/cancervariants/gene-jar/actions/checks.yaml)
 
 <!-- description -->
-This resource is useful for resolving ambiguous gene symbols powered by thousands of annotations characterizing the relationships between genes and their symbols.
+This resource is useful for resolving ambiguous gene symbols powered by thousands of annotations characterizing the relationships between genes and their symbols. Please see the [quickstart notebook](gene_jar_example_use.ipynb) for example usage.
 
 Given a gene symbol, this package:
 - finds all genes with this symbol as an alias or primary gene symbol
 - provides relationships between the gene symbols and their genes, when available
 - provides more detailed information when given the relationship type with the gene symbol
+
+Relationship rank was determined using a test set of ambiguous gene symbols and the highest accurate resolution rate. See [gene jar analysis repo](https://github.com/cancervariants/gene-jar-analysis/tree/09ecaf9fdae49915a6fd35a6830b46c6ae182e2a/analysis/gene_ids_in_lit)
 
 Resources used for annotations include:
 [Ensembl](https://www.ensembl.org/index.html)
@@ -23,10 +26,6 @@ Resources used for annotations include:
 [Uniprot](https://www.uniprot.org/)
 [Mouse Genome Informatics](https://www.informatics.jax.org/)
 <!-- /description -->
-
----
-
-**[Documentation](https://gene-jar.readthedocs.io/stable/)** · [Installation](https://gene-jar.readthedocs.io/stable/install.html) · [Usage](https://gene-jar.readthedocs.io/stable/usage.html) · [API reference](https://gene-jar.readthedocs.io/stable/reference/index.html)
 
 ---
 
@@ -42,4 +41,4 @@ python3 -m pip install gene-jar
 
 ## Feedback and contributing
 
-We welcome bug reports, feature requests, and code contributions from users and interested collaborators. The [documentation](https://gene-jar.readthedocs.io/latest/contributing.html) contains guidance for submitting feedback and contributing new code.
+We welcome bug reports, feature requests, and code contributions from users and interested collaborators. Please make an issue.

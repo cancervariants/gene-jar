@@ -56,28 +56,3 @@ jobs:
       - uses: j178/prek-action@v1
         with:
           extra_args: '--all-files --skip "ruff-format" --skip "ruff-check"'
-
-
-  docs:
-    runs-on: ubuntu-latest
-    env:
-      SPHINX_GITHUB_CHANGELOG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: 3.12  # broken on 3.13
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --extra docs
-
-      - name: Attempt docs build
-        working-directory: ./docs
-        run: source ../.venv/bin/activate && make html
