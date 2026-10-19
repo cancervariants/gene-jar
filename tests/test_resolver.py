@@ -222,45 +222,46 @@ def test_resolve_previous_symbol(gene_jar_factory):
     assert candidate["best_category"] == SymbolCategory.PREVIOUS
     assert candidate["qualifier"] == {"Previous Symbol Source": "HGNC"}
 
-    @pytest.mark.parametrize(
-        ("matching_species", "expected_qualifier"),
-        [
-            (
-                ["mouse", "rat"],
-                {"Matching Species": ["mouse", "rat"]},
-            ),
-            (
-                [],
-                {},
-            ),
-            (
-                None,
-                {},
-            ),
-        ],
+
+@pytest.mark.parametrize(
+    ("matching_species", "expected_qualifier"),
+    [
+        (
+            ["mouse", "rat"],
+            {"Matching Species": ["mouse", "rat"]},
+        ),
+        (
+            [],
+            {},
+        ),
+        (
+            None,
+            {},
+        ),
+    ],
+)
+def test_resolve_ortholog_symbol(
+    gene_jar_factory,
+    matching_species,
+    expected_qualifier,
+):
+    """Test ortholog resolution with populated and absent qualifiers."""
+    ortholog_df = pd.DataFrame(
+        {
+            "alias_symbol": ["TEST_ORTHOLOG"],
+            "primary_gene_symbol": ["TP53"],
+            "Matching Species": [matching_species],
+        }
     )
-    def test_resolve_ortholog_symbol(
-        gene_jar_factory,
-        matching_species,
-        expected_qualifier,
-    ):
-        """Test ortholog resolution with populated and absent qualifiers."""
-        ortholog_df = pd.DataFrame(
-            {
-                "alias_symbol": ["TEST_ORTHOLOG"],
-                "primary_gene_symbol": ["TP53"],
-                "Matching Species": [matching_species],
-            }
-        )
 
-        gj = gene_jar_factory(ortholog_df=ortholog_df)
+    gj = gene_jar_factory(ortholog_df=ortholog_df)
 
-        result = gj.resolve("TEST_ORTHOLOG")
-        candidate = result.iloc[0]
+    result = gj.resolve("TEST_ORTHOLOG")
+    candidate = result.iloc[0]
 
-        assert candidate["primary_gene_symbol"] == "TP53"
-        assert candidate["best_category"] == SymbolCategory.ORTHOLOG
-        assert candidate["qualifier"] == expected_qualifier
+    assert candidate["primary_gene_symbol"] == "TP53"
+    assert candidate["best_category"] == SymbolCategory.ORTHOLOG
+    assert candidate["qualifier"] == expected_qualifier
 
 
 def test_resolve_multiple_relationship_categories(gene_jar_factory):
