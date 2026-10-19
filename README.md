@@ -36,4 +36,4 @@ python3 -m pip install gene-jar
 
 ## Feedback and contributing
 
-We welcome bug reports, feature requests, and code contributions from users and interested collaborators. The [documentation](https://gene-jar.readthedocs.io/latest/contributing.html) contains guidance for submitting feedback and contributing new code.
+We welcome bug reports, feature requests, and code contributions from users and interested collaborators. Please make an issue.
