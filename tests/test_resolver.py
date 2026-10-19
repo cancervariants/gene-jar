@@ -467,67 +467,68 @@ def test_lookup_search_columns(
 
     assert result["primary_gene_symbol"].tolist() == expected_symbols
 
-    @pytest.mark.parametrize(
-        ("query", "search_column", "expected_symbols"),
-        [
-            # Different alias and primary symbols
-            ("TP53", SearchColumn.ALIAS, {"P53"}),
-            ("TP53", SearchColumn.PRIMARY, set()),
-            ("P53", SearchColumn.PRIMARY, {"P53"}),
-            ("P53", SearchColumn.BOTH, {"P53"}),
-            # Matching both columns returns one row
-            ("KRAS", SearchColumn.BOTH, {"KRAS"}),
-            # Case-insensitive matching
-            ("tp53", SearchColumn.ALIAS, {"P53"}),
-            # Null symbol cell
-            ("NULLGENE", SearchColumn.ALIAS, set()),
-            ("NULLGENE", SearchColumn.PRIMARY, {"NULLGENE"}),
-            # Special characters treated literally
-            ("GENE.", SearchColumn.ALIAS, {"DOTGENE"}),
-            ("GENE+", SearchColumn.ALIAS, {"PLUSGENE"}),
-            # Unknown query
-            ("UNKNOWN", SearchColumn.BOTH, set()),
-        ],
+
+@pytest.mark.parametrize(
+    ("query", "search_column", "expected_symbols"),
+    [
+        # Different alias and primary symbols
+        ("TP53", SearchColumn.ALIAS, {"P53"}),
+        ("TP53", SearchColumn.PRIMARY, set()),
+        ("P53", SearchColumn.PRIMARY, {"P53"}),
+        ("P53", SearchColumn.BOTH, {"P53"}),
+        # Matching both columns returns one row
+        ("KRAS", SearchColumn.BOTH, {"KRAS"}),
+        # Case-insensitive matching
+        ("tp53", SearchColumn.ALIAS, {"P53"}),
+        # Null symbol cell
+        ("NULLGENE", SearchColumn.ALIAS, set()),
+        ("NULLGENE", SearchColumn.PRIMARY, {"NULLGENE"}),
+        # Special characters treated literally
+        ("GENE.", SearchColumn.ALIAS, {"DOTGENE"}),
+        ("GENE+", SearchColumn.ALIAS, {"PLUSGENE"}),
+        # Unknown query
+        ("UNKNOWN", SearchColumn.BOTH, set()),
+    ],
+)
+def test_lookup_partial_match_search_columns(
+    gene_jar_factory,
+    query,
+    search_column,
+    expected_symbols,
+):
+    """Test partial lookup across symbol columns and edge cases."""
+    primary_df = pd.DataFrame(
+        {
+            "gene_symbol": [
+                "ABL",
+                "TP53",
+                "KRAS",
+                None,
+                "GENE.1",
+                "GENE+2",
+            ],
+            "primary_gene_symbol": [
+                "ABL1",
+                "P53",
+                "KRAS",
+                "NULLGENE",
+                "DOTGENE",
+                "PLUSGENE",
+            ],
+        }
     )
-    def test_lookup_partial_match_search_columns(
-        gene_jar_factory,
+
+    gj = gene_jar_factory(primary_df=primary_df)
+
+    result = gj.lookup(
         query,
-        search_column,
-        expected_symbols,
-    ):
-        """Test partial lookup across symbol columns and edge cases."""
-        primary_df = pd.DataFrame(
-            {
-                "gene_symbol": [
-                    "ABL",
-                    "TP53",
-                    "KRAS",
-                    None,
-                    "GENE.1",
-                    "GENE+2",
-                ],
-                "primary_gene_symbol": [
-                    "ABL1",
-                    "P53",
-                    "KRAS",
-                    "NULLGENE",
-                    "DOTGENE",
-                    "PLUSGENE",
-                ],
-            }
-        )
+        match_type=MatchType.PARTIAL,
+        search_column=search_column,
+    )
 
-        gj = gene_jar_factory(primary_df=primary_df)
-
-        result = gj.lookup(
-            query,
-            match_type=MatchType.PARTIAL,
-            search_column=search_column,
-        )
-
-        assert set(result["primary_gene_symbol"]) == expected_symbols
-        assert len(result) == len(expected_symbols)
-        assert list(result.columns) == list(gj.dfs[SymbolCategory.PRIMARY].columns)
+    assert set(result["primary_gene_symbol"]) == expected_symbols
+    assert len(result) == len(expected_symbols)
+    assert list(result.columns) == list(gj.dfs[SymbolCategory.PRIMARY].columns)
 
 
 @pytest.mark.parametrize(
