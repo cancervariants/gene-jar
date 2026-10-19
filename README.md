@@ -1,4 +1,9 @@
 # gene-jar
+
+[![image](https://img.shields.io/pypi/v/gene-jar.svg)](https://pypi.python.org/pypi/gene-jar)
+[![image](https://img.shields.io/pypi/l/gene-jar.svg)](https://pypi.python.org/pypi/gene-jar)
+[![image](https://img.shields.io/pypi/pyversions/gene-jar.svg)](https://pypi.python.org/pypi/gene-jar)
+
 [![Actions status](https://github.com/cancervariants/gene-jar/actions/workflows/checks.yaml/badge.svg)](https://github.com/cancervariants/gene-jar/actions/checks.yaml)
 
 <!-- description -->
