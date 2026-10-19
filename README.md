@@ -2,7 +2,7 @@
 [![Actions status](https://github.com/cancervariants/gene-jar/actions/workflows/checks.yaml/badge.svg)](https://github.com/cancervariants/gene-jar/actions/checks.yaml)
 
 <!-- description -->
-This resource is useful for resolving ambiguous gene symbols powered by thousands of annotations characterizing the relationships between genes and their symbols. Please see [quickstart notebook](gene_jar_example_use.ipynb) with example usage
+This resource is useful for resolving ambiguous gene symbols powered by thousands of annotations characterizing the relationships between genes and their symbols. Please see the [quickstart notebook](gene_jar_example_use.ipynb) for example usage.
 
 Given a gene symbol, this package:
 - finds all genes with this symbol as an alias or primary gene symbol
