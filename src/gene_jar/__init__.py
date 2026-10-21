@@ -8,7 +8,7 @@ __all__ = ["GeneJar", "MatchType", "SearchColumn", "SymbolCategory", "__version_
 
 
 try:
-    __version__ = version("gene_jar")
+    __version__ = version("gene-jar")
 except PackageNotFoundError:
     __version__ = "unknown"
 finally:
