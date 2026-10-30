@@ -1,6 +1,7 @@
 """Configure useful utilities."""
 
 import logging
+import zlib
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -47,7 +48,7 @@ def ensure_zip_cached(url: str, cache_path: Path) -> Path:
         try:
             with ZipFile(path) as archive:
                 return archive.testzip() is None
-        except (BadZipFile, OSError):
+        except (BadZipFile, EOFError, OSError, zlib.error):
             return False
 
     if is_valid_zip(cache_path):
