@@ -17,6 +17,10 @@ def initialize_logs(log_level: int = logging.INFO) -> None:
     formatter = logging.Formatter(
         "[%(asctime)s] - %(name)s - %(levelname)s : %(message)s"
     )
-    fh = RotatingFileHandler(f"{__package__}.log", maxBytes=5_000_000, backupCount=3)
+    fh = RotatingFileHandler(
+        f"{__package__}.log",
+        maxBytes=5_000_000,
+        backupCount=3,
+    )
     fh.setFormatter(formatter)
     root.addHandler(fh)

@@ -6,6 +6,8 @@ from typing import Any, ClassVar
 
 import pandas as pd
 
+from .datasets import load_datasets
+
 
 class MatchType(StrEnum):
     """Match options"""
@@ -155,6 +157,14 @@ class GeneJar:
         self.rank_map: dict[SymbolCategory, int] = {
             category: rank for rank, category in enumerate(self.RANK_ORDER)
         }
+
+    @classmethod
+    def download_datasets(cls, version: str = "0.1.0") -> "GeneJar":
+        """Download and load the datasets produced by gene-jar-analysis.
+
+        Return a ready-to-use GeneJar instance.
+        """
+        return load_datasets(version=version, gene_jar_cls=cls)
 
     def symbol_categories(self) -> list[str]:
         """Return the valid gene symbol category names."""
