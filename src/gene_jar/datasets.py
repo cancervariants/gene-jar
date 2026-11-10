@@ -151,7 +151,7 @@ def load_datasets(
     gene_jar_cls: type[GeneJar],
     version: str | None = None,
 ) -> GeneJar:
-    """Download and load the latest or selected Gene JAR dataset from Zenodo."""
+    """Load the latest dataset or a specific Zenodo record ID (version)."""
     base_url = f"https://zenodo.org/api/records/{ZENODO_RECORD_ID}"
     base_response = requests.get(base_url, timeout=30)
     base_response.raise_for_status()
@@ -159,37 +159,14 @@ def load_datasets(
     expected_concept_id = str(base_record["conceptrecid"])
 
     if version is None:
+        # Default to the latest published version of this Zenodo dataset.
         record_url = f"{base_url}/versions/latest"
     else:
-        # Follow all pages so older versions are not silently excluded.
-        versions_url = f"{base_url}/versions"
-        matching_record = None
-        while versions_url:
-            response = requests.get(versions_url, timeout=30)
-            response.raise_for_status()
-            listing = response.json()
-            matching_record = next(
-                (
-                    item
-                    for item in listing.get("hits", {}).get("hits", [])
-                    if item.get("metadata", {}).get("version") == version
-                    and str(item.get("conceptrecid")) == expected_concept_id
-                ),
-                None,
-            )
-            if matching_record is not None:
-                break
-            versions_url = listing.get("links", {}).get("next")
-            if versions_url:
-                parsed_next = urlsplit(versions_url)
-                if parsed_next.scheme != "https" or parsed_next.netloc != "zenodo.org":
-                    msg = "Invalid Zenodo versions pagination URL"
-                    raise ValueError(msg)
-
-        if matching_record is None:
-            msg = f"Zenodo dataset version not found: {version}"
+        # Zenodo does not require metadata.version; use an immutable record ID.
+        if not version.isascii() or not version.isdecimal():
+            msg = f"Zenodo version must be a numeric record ID: {version}"
             raise ValueError(msg)
-        record_url = f"https://zenodo.org/api/records/{matching_record['id']}"
+        record_url = f"https://zenodo.org/api/records/{version}"
 
     response = requests.get(record_url, timeout=30)
     response.raise_for_status()
@@ -197,8 +174,8 @@ def load_datasets(
     if str(record["conceptrecid"]) != expected_concept_id:
         msg = "Zenodo record belongs to a different dataset"
         raise ValueError(msg)
-    if version is not None and record.get("metadata", {}).get("version") != version:
-        msg = f"Zenodo record does not match requested version: {version}"
+    if version is not None and str(record["id"]) != version:
+        msg = f"Zenodo record does not match requested ID: {version}"
         raise ValueError(msg)
 
     record_id = str(record["id"])

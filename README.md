@@ -26,6 +26,46 @@ The `gene-jar` package provides the Python API for accessing these datasets. Its
 
 This separation allows annotation datasets to be updated independently of the `gene-jar` Python package.
 
+## Dataset Sources and Versions
+
+Gene JAR separates annotation dataset generation from dataset consumption.
+
+The [gene-jar-analysis](https://github.com/cancervariants/gene-jar-analysis) repository generates the gene annotation datasets used by Gene JAR. These datasets are published on [Zenodo](https://zenodo.org/records/23965261), allowing annotation data to be updated independently of the `gene-jar` Python package.
+
+The `gene-jar` package provides the Python API for accessing these datasets. It downloads, validates, and caches the published annotation files locally.
+
+### Downloading Datasets
+
+By default, `GeneJar.download_datasets()` downloads the latest published dataset from Zenodo:
+
+```python
+from gene_jar import GeneJar
+
+jar = GeneJar.download_datasets()
+```
+
+For reproducible analyses, a specific dataset release can be selected using its **Zenodo record ID**:
+
+```python
+jar = GeneJar.download_datasets(version="23965261")
+```
+
+Each published Zenodo version receives a unique record ID. The loader verifies that the selected record belongs to the Gene JAR dataset collection.
+
+**Note:** The `version` parameter accepts a Zenodo record ID, not a semantic version string such as `"1.0.0"`.
+
+### Dataset Caching
+
+Downloaded datasets are stored locally under:
+
+```text
+~/.cache/gene-jar/<record-id>/
+```
+
+The loader validates the downloaded archive against its published Zenodo checksum and extracts the required annotation files. Previously downloaded datasets are reused when the cached archive and extracted files pass the loader's validation checks.
+
+Newly published dataset versions can be retrieved without updating or reinstalling the `gene-jar` Python package.
+
 Resources used for annotations include:
 [Ensembl](https://www.ensembl.org/index.html)
 [HGNC](https://www.genenames.org/)

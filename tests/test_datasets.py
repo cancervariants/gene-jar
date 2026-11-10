@@ -1,4 +1,4 @@
-"""Tests for downloading and loading versioned Zenodo Gene JAR datasets."""
+"""Tests for downloading the latest or an explicit Zenodo record ID."""
 
 from __future__ import annotations
 
@@ -68,20 +68,21 @@ def _mock_zenodo(
     latest_id: str = "23965261",
     concept_id: str = "123456",
     latest_concept_id: str | None = None,
-    selected_version: str | None = None,
-    selected_id: str = "23965000",
+    selected_id: str | None = None,
+    selected_concept_id: str | None = None,
+    returned_selected_id: str | None = None,
 ):
-    """Mock Zenodo metadata, version listing, and streamed ZIP downloads."""
+    """Mock Zenodo latest and record-ID selection without metadata.version."""
     base_url = f"https://zenodo.org/api/records/{datasets.ZENODO_RECORD_ID}"
     checksum = hashlib.md5(payload, usedforsecurity=False).hexdigest()
     calls = {"metadata": [], "downloads": []}
 
-    def record(record_id: str, record_concept_id: str, version: str) -> dict:
+    def record(record_id: str, record_concept_id: str) -> dict:
         return {
             "id": record_id,
             "conceptrecid": record_concept_id,
             "status": "published",
-            "metadata": {"version": version},
+            "metadata": {"title": "Gene JAR Resources Data"},
             "files": [
                 {
                     "key": "output.zip",
@@ -99,32 +100,29 @@ def _mock_zenodo(
     def fake_get(url, **kwargs):
         if url == base_url:
             calls["metadata"].append(url)
-            return FakeResponse(
-                metadata={"id": datasets.ZENODO_RECORD_ID, "conceptrecid": concept_id}
+            metadata = (
+                record(selected_id, selected_concept_id or concept_id)
+                if selected_id == datasets.ZENODO_RECORD_ID
+                else {"id": datasets.ZENODO_RECORD_ID, "conceptrecid": concept_id}
             )
+            return FakeResponse(metadata=metadata)
         if url == f"{base_url}/versions/latest":
             calls["metadata"].append(url)
             return FakeResponse(
                 metadata=record(
                     latest_id,
                     latest_concept_id if latest_concept_id is not None else concept_id,
-                    "2.0.0",
                 )
             )
-        if url == f"{base_url}/versions":
-            calls["metadata"].append(url)
-            hits = (
-                [record(selected_id, concept_id, selected_version)]
-                if selected_version is not None
-                else []
-            )
-            return FakeResponse(metadata={"hits": {"hits": hits}, "links": {}})
-        if selected_version is not None and url == (
+        if selected_id is not None and url == (
             f"https://zenodo.org/api/records/{selected_id}"
         ):
             calls["metadata"].append(url)
             return FakeResponse(
-                metadata=record(selected_id, concept_id, selected_version)
+                metadata=record(
+                    returned_selected_id or selected_id,
+                    selected_concept_id or concept_id,
+                )
             )
         if url.endswith("/files/output.zip/content"):
             assert kwargs.get("stream") is True
@@ -239,30 +237,57 @@ def test_download_datasets_uses_new_record_cache(tmp_path, monkeypatch, isolated
 
 
 def test_download_datasets_loads_selected_version(tmp_path, monkeypatch, isolated_home):
+    """Select a fixed Zenodo record ID even without metadata.version."""
     payload = _release_zip(tmp_path)
-    calls = _mock_zenodo(
-        monkeypatch, payload, selected_version="1.0.0", selected_id="23965000"
-    )
+    selected_id = "23965000"
+    calls = _mock_zenodo(monkeypatch, payload, selected_id=selected_id)
 
-    result = GeneJar.download_datasets(version="1.0.0")
+    result = GeneJar.download_datasets(version=selected_id)
 
     assert isinstance(result, GeneJar)
     assert len(calls["downloads"]) == 1
-    assert "/23965000/" in calls["downloads"][0]
-    assert (isolated_home / ".cache" / "gene-jar" / "23965000" / "output.zip").exists()
-    assert (
-        f"https://zenodo.org/api/records/{datasets.ZENODO_RECORD_ID}/versions"
-        in calls["metadata"]
-    )
+    assert f"/{selected_id}/" in calls["downloads"][0]
+    assert (isolated_home / ".cache" / "gene-jar" / selected_id / "output.zip").exists()
+    assert f"https://zenodo.org/api/records/{selected_id}" in calls["metadata"]
+    assert not any(url.endswith("/versions/latest") for url in calls["metadata"])
 
 
 @pytest.mark.usefixtures("isolated_home")
-def test_download_datasets_rejects_unknown_version(tmp_path, monkeypatch):
+def test_download_datasets_rejects_non_numeric_version(tmp_path, monkeypatch):
+    """Reject semantic version strings when Zenodo record IDs are required."""
     payload = _release_zip(tmp_path)
     calls = _mock_zenodo(monkeypatch, payload)
 
-    with pytest.raises(ValueError, match="version not found"):
-        GeneJar.download_datasets(version="0.0.0")
+    with pytest.raises(ValueError, match="numeric record ID"):
+        GeneJar.download_datasets(version="1.0.0")
+
+    assert calls["downloads"] == []
+
+
+@pytest.mark.usefixtures("isolated_home")
+def test_download_datasets_rejects_unrelated_selected_record(tmp_path, monkeypatch):
+    """Reject record IDs from another Zenodo concept."""
+    payload = _release_zip(tmp_path)
+    calls = _mock_zenodo(
+        monkeypatch, payload, selected_id="23965000", selected_concept_id="other"
+    )
+
+    with pytest.raises(ValueError, match="different dataset"):
+        GeneJar.download_datasets(version="23965000")
+
+    assert calls["downloads"] == []
+
+
+@pytest.mark.usefixtures("isolated_home")
+def test_download_datasets_rejects_mismatched_selected_id(tmp_path, monkeypatch):
+    """Ensure a requested record ID matches the returned metadata."""
+    payload = _release_zip(tmp_path)
+    calls = _mock_zenodo(
+        monkeypatch, payload, selected_id="23965000", returned_selected_id="23965001"
+    )
+
+    with pytest.raises(ValueError, match="does not match requested ID"):
+        GeneJar.download_datasets(version="23965000")
 
     assert calls["downloads"] == []
 
