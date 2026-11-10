@@ -5,12 +5,11 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
-import stat
 import tempfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
-from zipfile import BadZipFile, ZipFile
+from zipfile import ZipFile
 
 import pandas as pd
 import requests
@@ -20,6 +19,8 @@ if TYPE_CHECKING:
 
 ZENODO_RECORD_ID = "23965261"
 MD5_HEX_LENGTH = 32
+NESTED_ZIP_NAME = "output/relationship_annotations.zip"
+NESTED_DATA_DIR = "relationship_annotations"
 
 DATA_FILES = (
     ("primary_df", "summary_df.h5"),
@@ -49,6 +50,7 @@ def _verify_checksum(zip_path: Path, expected_checksum: str) -> bool:
         separator != ":"
         or algorithm.lower() != "md5"
         or len(expected_hash) != MD5_HEX_LENGTH
+        or any(char not in "0123456789abcdefABCDEF" for char in expected_hash)
     ):
         msg = f"Unsupported or malformed Zenodo checksum: {expected_checksum}"
         raise ValueError(msg)
@@ -83,10 +85,20 @@ def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Pa
         if not _verify_checksum(temp_path, expected_checksum):
             msg = "Downloaded Zenodo ZIP does not match the published checksum"
             raise ValueError(msg)
-        with ZipFile(temp_path) as archive:
-            if archive.testzip() is not None:
-                msg = "Downloaded ZIP archive contains a corrupt entry"
-                raise BadZipFile(msg)
+
+        # Validate the required nested archive, rather than macOS metadata
+        # members that are irrelevant to Gene JAR.
+        with (
+            ZipFile(temp_path) as outer,
+            outer.open(NESTED_ZIP_NAME) as nested_stream,
+            ZipFile(nested_stream) as inner,
+        ):
+            for _, filename in DATA_FILES:
+                member_name = f"{NESTED_DATA_DIR}/{filename}"
+                with inner.open(member_name) as source:
+                    while source.read(1024 * 1024):
+                        pass
+
         temp_path.replace(cache_path)
     finally:
         temp_path.unlink(missing_ok=True)
@@ -94,7 +106,7 @@ def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Pa
 
 
 def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> None:
-    """Safely stage and publish a complete output directory."""
+    """Stage required HDF5 files from the nested ZIP and publish atomically."""
     data_dir = cache_dir / "output"
     marker_path = cache_dir / ".extracted_checksum"
     required = {filename for _, filename in DATA_FILES}
@@ -108,34 +120,20 @@ def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> 
 
     marker_path.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(dir=cache_dir, prefix="extract-") as temp_name:
-        staging_root = Path(temp_name)
-        with ZipFile(zip_path) as archive:
-            for member in archive.infolist():
-                path = PurePosixPath(member.filename)
-                if (
-                    path.is_absolute()
-                    or ".." in path.parts
-                    or not path.parts
-                    or path.parts[0] != "output"
-                    or "\\" in member.filename
-                ):
-                    msg = f"Unsafe or unexpected ZIP entry: {member.filename}"
-                    raise ValueError(msg)
-                mode = member.external_attr >> 16
-                kind = stat.S_IFMT(mode)
-                if kind not in (0, stat.S_IFREG, stat.S_IFDIR):
-                    msg = f"Unsupported ZIP entry type: {member.filename}"
-                    raise ValueError(msg)
+        staged_data = Path(temp_name) / "output"
+        staged_data.mkdir()
 
-                target = staging_root.joinpath(*path.parts)
-                if member.is_dir():
-                    target.mkdir(parents=True, exist_ok=True)
-                else:
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    with archive.open(member) as source, target.open("wb") as dest:
-                        shutil.copyfileobj(source, dest)
+        with (
+            ZipFile(zip_path) as outer,
+            outer.open(NESTED_ZIP_NAME) as nested_stream,
+            ZipFile(nested_stream) as inner,
+        ):
+            for filename in sorted(required):
+                member_name = f"{NESTED_DATA_DIR}/{filename}"
+                destination = staged_data / filename
+                with inner.open(member_name) as source, destination.open("wb") as dest:
+                    shutil.copyfileobj(source, dest)
 
-        staged_data = staging_root / "output"
         missing = sorted(
             name for name in required if not (staged_data / name).is_file()
         )
@@ -153,54 +151,54 @@ def load_datasets(
     gene_jar_cls: type[GeneJar],
     version: str | None = None,
 ) -> GeneJar:
-    """Download and load a selected or latest gene-jar dataset from Zenodo."""
-    # Retrieve the original Zenodo record.
+    """Download and load the latest or selected Gene JAR dataset from Zenodo."""
     base_url = f"https://zenodo.org/api/records/{ZENODO_RECORD_ID}"
-
     base_response = requests.get(base_url, timeout=30)
     base_response.raise_for_status()
     base_record = base_response.json()
-
     expected_concept_id = str(base_record["conceptrecid"])
 
     if version is None:
-        # Default to the latest published dataset.
         record_url = f"{base_url}/versions/latest"
     else:
-        # Find the requested version within the same Zenodo dataset.
+        # Follow all pages so older versions are not silently excluded.
         versions_url = f"{base_url}/versions"
-        response = requests.get(
-            versions_url,
-            params={"size": 100},
-            timeout=30,
-        )
-        response.raise_for_status()
-
-        versions = response.json().get("hits", {}).get("hits", [])
-
-        matching_record = next(
-            (
-                item
-                for item in versions
-                if item.get("metadata", {}).get("version") == version
-            ),
-            None,
-        )
+        matching_record = None
+        while versions_url:
+            response = requests.get(versions_url, timeout=30)
+            response.raise_for_status()
+            listing = response.json()
+            matching_record = next(
+                (
+                    item
+                    for item in listing.get("hits", {}).get("hits", [])
+                    if item.get("metadata", {}).get("version") == version
+                    and str(item.get("conceptrecid")) == expected_concept_id
+                ),
+                None,
+            )
+            if matching_record is not None:
+                break
+            versions_url = listing.get("links", {}).get("next")
+            if versions_url:
+                parsed_next = urlsplit(versions_url)
+                if parsed_next.scheme != "https" or parsed_next.netloc != "zenodo.org":
+                    msg = "Invalid Zenodo versions pagination URL"
+                    raise ValueError(msg)
 
         if matching_record is None:
             msg = f"Zenodo dataset version not found: {version}"
             raise ValueError(msg)
-
         record_url = f"https://zenodo.org/api/records/{matching_record['id']}"
 
-    # Retrieve the selected Zenodo record.
     response = requests.get(record_url, timeout=30)
     response.raise_for_status()
     record = response.json()
-
-    # Verify the selected record belongs to the same dataset.
     if str(record["conceptrecid"]) != expected_concept_id:
         msg = "Zenodo record belongs to a different dataset"
+        raise ValueError(msg)
+    if version is not None and record.get("metadata", {}).get("version") != version:
+        msg = f"Zenodo record does not match requested version: {version}"
         raise ValueError(msg)
 
     record_id = str(record["id"])
@@ -214,7 +212,7 @@ def load_datasets(
 
     download_url = zip_file["links"]["self"]
     parsed_url = urlsplit(download_url)
-    if parsed_url.scheme != "https" or parsed_url.hostname != "zenodo.org":
+    if parsed_url.scheme != "https" or parsed_url.netloc != "zenodo.org":
         msg = "Download URL must use https://zenodo.org"
         raise ValueError(msg)
 
@@ -225,7 +223,6 @@ def load_datasets(
         zip_path, expected_checksum
     )
     _ensure_zip_cached(download_url, zip_path, expected_checksum)
-
     if zip_was_invalid:
         (cache_dir / ".extracted_checksum").unlink(missing_ok=True)
 
