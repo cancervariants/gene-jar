@@ -2,27 +2,31 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
+import stat
 import tempfile
-import zlib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
-from urllib.request import urlretrieve
 from zipfile import BadZipFile, ZipFile
 
 import pandas as pd
+import requests
 
 if TYPE_CHECKING:
     from . import GeneJar
 
+ZENODO_RECORD_ID = "23965261"
+MD5_HEX_LENGTH = 32
 
 DATA_FILES = (
     ("primary_df", "summary_df.h5"),
     ("ortholog_df", "ortholog_match_subset_genes_df.h5"),
     ("flj_clone_df", "flj_clone_symbol_match_subset_genes_df.h5"),
     ("phenotype_df", "phenotype_match_subset_genes_df.h5"),
-    ("hgnc_gene_group_df", "gene_group_prefix_match_subset_genes_df.h5"),
+    ("hgnc_gene_group_df", "hgnc_gene_group_match_subset_genes_df.h5"),
     ("gene_id_df", "gene_id_match_subset_genes_df.h5"),
     ("mgi_withdrawn_df", "mgi_withdrawn_symbol_match_subset_genes_df.h5"),
     ("ncbi_related_gene_df", "ncbi_related_gene_match_subset_genes_df.h5"),
@@ -37,67 +41,161 @@ DATA_FILES = (
     ("alternate_abbreviation_df", "alt_abbrev_symbol_match_subset_genes_df.h5"),
 )
 
-GITHUB_REPO = "cancervariants/gene-jar"
+
+def _verify_checksum(zip_path: Path, expected_checksum: str) -> bool:
+    """Check a file against its Zenodo MD5 checksum."""
+    algorithm, separator, expected_hash = expected_checksum.partition(":")
+    if (
+        separator != ":"
+        or algorithm.lower() != "md5"
+        or len(expected_hash) != MD5_HEX_LENGTH
+    ):
+        msg = f"Unsupported or malformed Zenodo checksum: {expected_checksum}"
+        raise ValueError(msg)
+
+    if not zip_path.is_file():
+        return False
+
+    digest = hashlib.md5(usedforsecurity=False)
+    with zip_path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().lower() == expected_hash.lower()
 
 
-def _ensure_zip_cached(url: str, cache_path: Path) -> Path:
-    """Return a valid cached ZIP, downloading it if needed."""
-    cache_path = Path(cache_path)
+def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Path:
+    """Reuse a verified ZIP or download and verify a replacement atomically."""
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-
-    def is_valid_zip(path: Path) -> bool:
-        try:
-            with ZipFile(path) as archive:
-                return archive.testzip() is None
-        except (BadZipFile, EOFError, OSError, zlib.error):
-            return False
-
-    if is_valid_zip(cache_path):
+    if _verify_checksum(cache_path, expected_checksum):
         return cache_path
 
-    fd, temp_name = tempfile.mkstemp(dir=cache_path.parent, suffix=".zip")
+    fd, name = tempfile.mkstemp(dir=cache_path.parent, suffix=".zip")
     os.close(fd)
-    temp_path = Path(temp_name)
-
+    temp_path = Path(name)
     try:
-        urlretrieve(url, temp_path)  # noqa: S310
-        if not is_valid_zip(temp_path):
-            msg = "Downloaded ZIP archive is invalid or incomplete"
-            raise BadZipFile(msg)
+        with requests.get(url, stream=True, timeout=(30, 120)) as response:
+            response.raise_for_status()
+            with temp_path.open("wb") as stream:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        stream.write(chunk)
+
+        if not _verify_checksum(temp_path, expected_checksum):
+            msg = "Downloaded Zenodo ZIP does not match the published checksum"
+            raise ValueError(msg)
+        with ZipFile(temp_path) as archive:
+            if archive.testzip() is not None:
+                msg = "Downloaded ZIP archive contains a corrupt entry"
+                raise BadZipFile(msg)
         temp_path.replace(cache_path)
     finally:
         temp_path.unlink(missing_ok=True)
-
     return cache_path
 
 
-def load_datasets(version: str, gene_jar_cls: type[GeneJar]) -> GeneJar:
-    """Download and load datasets produced by gene-jar-analysis."""
-    asset_name = f"gene-jar-data-{version}.zip"
-    cache_dir = Path.home() / ".cache" / "gene-jar" / version
-    data_dir = cache_dir / f"gene-jar-data-{version}"
-    zip_path = cache_dir.parent / asset_name
+def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> None:
+    """Safely stage and publish a complete output directory."""
+    data_dir = cache_dir / "output"
+    marker_path = cache_dir / ".extracted_checksum"
+    required = {filename for _, filename in DATA_FILES}
 
-    if not all((data_dir / filename).is_file() for _, filename in DATA_FILES):
-        download_url = (
-            f"https://github.com/{GITHUB_REPO}/releases/download/{version}/{asset_name}"
-        )
-        parsed_url = urlsplit(download_url)
-        if parsed_url.scheme != "https" or parsed_url.netloc != "github.com":
-            msg = "Release download URL must use https://github.com"
-            raise ValueError(msg)
+    if (
+        marker_path.is_file()
+        and marker_path.read_text(encoding="utf-8") == expected_checksum
+        and all((data_dir / filename).is_file() for filename in required)
+    ):
+        return
 
-        zip_path = _ensure_zip_cached(download_url, zip_path)
+    marker_path.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(dir=cache_dir, prefix="extract-") as temp_name:
+        staging_root = Path(temp_name)
         with ZipFile(zip_path) as archive:
-            archive.extractall(cache_dir)
+            for member in archive.infolist():
+                path = PurePosixPath(member.filename)
+                if (
+                    path.is_absolute()
+                    or ".." in path.parts
+                    or not path.parts
+                    or path.parts[0] != "output"
+                    or "\\" in member.filename
+                ):
+                    msg = f"Unsafe or unexpected ZIP entry: {member.filename}"
+                    raise ValueError(msg)
+                mode = member.external_attr >> 16
+                kind = stat.S_IFMT(mode)
+                if kind not in (0, stat.S_IFREG, stat.S_IFDIR):
+                    msg = f"Unsupported ZIP entry type: {member.filename}"
+                    raise ValueError(msg)
 
-    missing_files = [
-        filename for _, filename in DATA_FILES if not (data_dir / filename).is_file()
-    ]
-    if missing_files:
-        msg = f"Missing files in downloaded release: {missing_files}"
+                target = staging_root.joinpath(*path.parts)
+                if member.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with archive.open(member) as source, target.open("wb") as dest:
+                        shutil.copyfileobj(source, dest)
+
+        staged_data = staging_root / "output"
+        missing = sorted(
+            name for name in required if not (staged_data / name).is_file()
+        )
+        if missing:
+            msg = f"Missing required files in Zenodo ZIP: {missing}"
+            raise FileNotFoundError(msg)
+
+        if data_dir.exists():
+            shutil.rmtree(data_dir)
+        staged_data.replace(data_dir)
+        marker_path.write_text(expected_checksum, encoding="utf-8")
+
+
+def load_datasets(gene_jar_cls: type[GeneJar]) -> GeneJar:
+    """Load the latest published Gene JAR datasets from Zenodo."""
+    base_url = f"https://zenodo.org/api/records/{ZENODO_RECORD_ID}"
+    base_response = requests.get(base_url, timeout=30)
+    base_response.raise_for_status()
+    base_record = base_response.json()
+
+    latest_url = f"{base_url}/versions/latest"
+    latest_response = requests.get(latest_url, timeout=30)
+    latest_response.raise_for_status()
+    record = latest_response.json()
+
+    if str(record["conceptrecid"]) != str(base_record["conceptrecid"]):
+        msg = "Latest Zenodo record belongs to a different dataset"
+        raise ValueError(msg)
+    if record.get("status") not in (None, "published"):
+        msg = "Latest Zenodo record is not published"
+        raise ValueError(msg)
+
+    record_id = str(record["id"])
+    zip_file = next(
+        (item for item in record.get("files", []) if item.get("key") == "output.zip"),
+        None,
+    )
+    if zip_file is None:
+        msg = f"output.zip not found in Zenodo record {record_id}"
         raise FileNotFoundError(msg)
 
+    download_url = zip_file["links"]["self"]
+    parsed_url = urlsplit(download_url)
+    if parsed_url.scheme != "https" or parsed_url.hostname != "zenodo.org":
+        msg = "Download URL must use https://zenodo.org"
+        raise ValueError(msg)
+
+    expected_checksum = zip_file["checksum"]
+    cache_dir = Path.home() / ".cache" / "gene-jar" / record_id
+    zip_path = cache_dir / "output.zip"
+    zip_was_invalid = zip_path.is_file() and not _verify_checksum(
+        zip_path, expected_checksum
+    )
+    _ensure_zip_cached(download_url, zip_path, expected_checksum)
+
+    if zip_was_invalid:
+        (cache_dir / ".extracted_checksum").unlink(missing_ok=True)
+
+    _extract_output(zip_path, cache_dir, expected_checksum)
+    data_dir = cache_dir / "output"
     dataframes = {
         key: pd.read_hdf(data_dir / filename, key="df") for key, filename in DATA_FILES
     }

@@ -159,12 +159,12 @@ class GeneJar:
         }
 
     @classmethod
-    def download_datasets(cls, version: str = "0.1.0") -> "GeneJar":
-        """Download and load the datasets produced by gene-jar-analysis.
+    def download_datasets(cls) -> "GeneJar":
+        """Download and load the datasets produced by gene-jar-resources.
 
         Return a ready-to-use GeneJar instance.
         """
-        return load_datasets(version=version, gene_jar_cls=cls)
+        return load_datasets(gene_jar_cls=cls)
 
     def symbol_categories(self) -> list[str]:
         """Return the valid gene symbol category names."""
