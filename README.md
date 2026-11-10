@@ -14,7 +14,17 @@ Given a gene symbol, this package:
 - provides relationships between the gene symbols and their genes, when available
 - provides more detailed information when given the relationship type with the gene symbol
 
-Relationship rank was determined using a test set of ambiguous gene symbols and the highest accurate resolution rate. See [gene jar resources repo](https://github.com/cancervariants/gene-jar-resources/tree/09ecaf9fdae49915a6fd35a6830b46c6ae182e2a/analysis/ranked_category_resolver)
+Relationship rank was determined using a calculated ambiguity score for each relationship category. See [gene jar resources repo](https://github.com/cancervariants/gene-jar-resources/tree/09ecaf9fdae49915a6fd35a6830b46c6ae182e2a/analysis/ranked_category_resolver)
+
+### Annotation dataset sources
+
+Gene JAR separates annotation dataset generation from dataset consumption.
+
+The [gene jar resources repo](https://github.com/cancervariants/gene-jar-resources) repository generates the annotation datasets used by Gene JAR. The generated datasets are published as versioned archives on [Zenodo](https://zenodo.org/records/23965261).
+
+The `gene-jar` package provides the Python API for accessing these datasets. Its dataset loader retrieves the latest published Zenodo version, validates the downloaded archive against its published checksum, and caches the extracted files locally.
+
+This separation allows annotation datasets to be updated independently of the `gene-jar` Python package.
 
 Resources used for annotations include:
 [Ensembl](https://www.ensembl.org/index.html)

@@ -149,23 +149,58 @@ def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> 
         marker_path.write_text(expected_checksum, encoding="utf-8")
 
 
-def load_datasets(gene_jar_cls: type[GeneJar]) -> GeneJar:
-    """Load the latest published Gene JAR datasets from Zenodo."""
+def load_datasets(
+    gene_jar_cls: type[GeneJar],
+    version: str | None = None,
+) -> GeneJar:
+    """Download and load a selected or latest gene-jar dataset from Zenodo."""
+    # Retrieve the original Zenodo record.
     base_url = f"https://zenodo.org/api/records/{ZENODO_RECORD_ID}"
+
     base_response = requests.get(base_url, timeout=30)
     base_response.raise_for_status()
     base_record = base_response.json()
 
-    latest_url = f"{base_url}/versions/latest"
-    latest_response = requests.get(latest_url, timeout=30)
-    latest_response.raise_for_status()
-    record = latest_response.json()
+    expected_concept_id = str(base_record["conceptrecid"])
 
-    if str(record["conceptrecid"]) != str(base_record["conceptrecid"]):
-        msg = "Latest Zenodo record belongs to a different dataset"
-        raise ValueError(msg)
-    if record.get("status") not in (None, "published"):
-        msg = "Latest Zenodo record is not published"
+    if version is None:
+        # Default to the latest published dataset.
+        record_url = f"{base_url}/versions/latest"
+    else:
+        # Find the requested version within the same Zenodo dataset.
+        versions_url = f"{base_url}/versions"
+        response = requests.get(
+            versions_url,
+            params={"size": 100},
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        versions = response.json().get("hits", {}).get("hits", [])
+
+        matching_record = next(
+            (
+                item
+                for item in versions
+                if item.get("metadata", {}).get("version") == version
+            ),
+            None,
+        )
+
+        if matching_record is None:
+            msg = f"Zenodo dataset version not found: {version}"
+            raise ValueError(msg)
+
+        record_url = f"https://zenodo.org/api/records/{matching_record['id']}"
+
+    # Retrieve the selected Zenodo record.
+    response = requests.get(record_url, timeout=30)
+    response.raise_for_status()
+    record = response.json()
+
+    # Verify the selected record belongs to the same dataset.
+    if str(record["conceptrecid"]) != expected_concept_id:
+        msg = "Zenodo record belongs to a different dataset"
         raise ValueError(msg)
 
     record_id = str(record["id"])

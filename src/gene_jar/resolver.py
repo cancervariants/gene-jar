@@ -1,12 +1,14 @@
 """Utilities for resolving gene symbols across multiple harmonized reference datasets."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, ClassVar
 
 import pandas as pd
 
-from .datasets import load_datasets
+from . import datasets
 
 
 class MatchType(StrEnum):
@@ -159,12 +161,12 @@ class GeneJar:
         }
 
     @classmethod
-    def download_datasets(cls) -> "GeneJar":
-        """Download and load the datasets produced by gene-jar-resources.
-
-        Return a ready-to-use GeneJar instance.
-        """
-        return load_datasets(gene_jar_cls=cls)
+    def download_datasets(
+        cls,
+        version: str | None = None,
+    ) -> GeneJar:
+        """Download the latest or a selected Zenodo dataset version."""
+        return datasets.load_datasets(cls, version=version)
 
     def symbol_categories(self) -> list[str]:
         """Return the valid gene symbol category names."""
