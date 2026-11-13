@@ -7,7 +7,9 @@ from logging.handlers import RotatingFileHandler
 def initialize_logs(log_level: int = logging.INFO) -> None:
     """Configure logging.
 
-    :param log_level: app log level to set
+    :param log_level: Application log level to set.
+    :return: None.
+    :raises OSError: If the log file cannot be created or opened.
     """
     root = logging.getLogger()
     if root.handlers:

@@ -44,7 +44,14 @@ DATA_FILES = (
 
 
 def _verify_checksum(zip_path: Path, expected_checksum: str) -> bool:
-    """Check a file against its Zenodo MD5 checksum."""
+    """Check a file against its Zenodo MD5 checksum.
+
+    :param zip_path: Path to the ZIP file to verify.
+    :param expected_checksum: Expected Zenodo MD5 checksum.
+    :return: True if the file exists and its checksum matches, otherwise False.
+    :raises ValueError: If the checksum format is invalid or unsupported.
+    :raises OSError: If the file cannot be read.
+    """
     algorithm, separator, expected_hash = expected_checksum.partition(":")
     if (
         separator != ":"
@@ -66,7 +73,18 @@ def _verify_checksum(zip_path: Path, expected_checksum: str) -> bool:
 
 
 def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Path:
-    """Reuse a verified ZIP or download and verify a replacement atomically."""
+    """Reuse a verified ZIP or download and verify a replacement atomically.
+
+    :param url: URL from which to download the ZIP file.
+    :param cache_path: Local path where the verified ZIP file is cached.
+    :param expected_checksum: Expected Zenodo MD5 checksum.
+    :return: Path to the verified cached ZIP file.
+    :raises ValueError: If the checksum is invalid or verification fails.
+    :raises requests.RequestException: If the download fails.
+    :raises OSError: If a filesystem operation fails.
+    :raises BadZipFile: If the ZIP or nested archive is invalid.
+    :raises KeyError: If a required archive member is missing.
+    """
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     if _verify_checksum(cache_path, expected_checksum):
         return cache_path
@@ -106,7 +124,17 @@ def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Pa
 
 
 def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> None:
-    """Stage required HDF5 files from the nested ZIP and publish atomically."""
+    """Stage required HDF5 files from the nested ZIP and publish atomically.
+
+    :param zip_path: Path to the verified ZIP archive.
+    :param cache_dir: Directory where the extracted files are cached.
+    :param expected_checksum: Checksum identifying the extracted dataset version.
+    :return: None.
+    :raises FileNotFoundError: If required extracted files are missing.
+    :raises BadZipFile: If the ZIP or nested archive is invalid.
+    :raises KeyError: If a required archive member is missing.
+    :raises OSError: If extraction or filesystem operations fail.
+    """
     data_dir = cache_dir / "output"
     marker_path = cache_dir / ".extracted_checksum"
     required = {filename for _, filename in DATA_FILES}
@@ -151,7 +179,18 @@ def load_datasets(
     gene_jar_cls: type[GeneJar],
     version: str | None = None,
 ) -> GeneJar:
-    """Load the latest dataset or a specific Zenodo record ID (version)."""
+    """Load the latest dataset or a specific Zenodo record ID (version).
+
+    :param gene_jar_cls: GeneJar class used to construct the loaded dataset.
+    :param version: Numeric Zenodo record ID, or None for the latest version.
+    :return: GeneJar instance populated with the downloaded datasets.
+    :raises ValueError: If the version, record, URL, or checksum is invalid.
+    :raises FileNotFoundError: If required dataset files are missing.
+    :raises requests.RequestException: If a Zenodo API request or download fails.
+    :raises BadZipFile: If the ZIP or nested archive is invalid.
+    :raises KeyError: If required metadata or archive members are missing.
+    :raises OSError: If a filesystem operation fails.
+    """
     base_url = f"https://zenodo.org/api/records/{ZENODO_RECORD_ID}"
     base_response = requests.get(base_url, timeout=30)
     base_response.raise_for_status()

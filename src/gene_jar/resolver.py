@@ -12,7 +12,7 @@ from . import datasets
 
 
 class MatchType(StrEnum):
-    """Match options"""
+    """Match options."""
 
     IDENTICAL = "identical"
     PARTIAL = "partial"
@@ -80,7 +80,7 @@ class GeneJar:
     :param placeholder_df: DataFrame containing placeholder symbols.
     :param previous_df: DataFrame containing previous gene symbols.
     :param protein_mass_df: DataFrame containing protein mass symbols.
-    :param alternate_abbreviation_df: DataFrame containing alternate abbreviation symbols
+    :param alternate_abbreviation_df: DataFrame containing alternate abbreviation symbols.
     """
 
     RANK_ORDER: ClassVar[list[SymbolCategory]] = [
@@ -118,8 +118,23 @@ class GeneJar:
         protein_mass_df: pd.DataFrame,
         alternate_abbreviation_df: pd.DataFrame,
     ):
-        """Initialize with dataframes.
-        primary_df and ortholog_df must have columns: 'gene_symbol', 'primary_gene_symbol'
+        """Initialize with gene reference DataFrames.
+
+        :param primary_df: DataFrame containing primary gene symbols.
+        :param ortholog_df: DataFrame containing ortholog symbols.
+        :param flj_clone_df: DataFrame containing FLJ clone symbols.
+        :param phenotype_df: DataFrame containing phenotype-related symbols.
+        :param hgnc_gene_group_df: DataFrame containing HGNC gene group symbols.
+        :param gene_id_df: DataFrame containing gene identifier symbols.
+        :param mgi_withdrawn_df: DataFrame containing withdrawn MGI symbols.
+        :param ncbi_related_gene_df: DataFrame containing related NCBI genes.
+        :param ncbi_gene_interaction_df: DataFrame containing NCBI gene interactions.
+        :param ncbi_gene_neighbor_df: DataFrame containing NCBI gene neighbors.
+        :param placeholder_df: DataFrame containing placeholder symbols.
+        :param previous_df: DataFrame containing previous gene symbols.
+        :param protein_mass_df: DataFrame containing protein mass symbols.
+        :param alternate_abbreviation_df: DataFrame containing alternate abbreviations.
+        :return: None.
         """
         self.dfs: dict[SymbolCategory, pd.DataFrame] = {
             SymbolCategory.PRIMARY: primary_df,
@@ -165,11 +180,24 @@ class GeneJar:
         cls,
         version: str | None = None,
     ) -> GeneJar:
-        """Download the latest or a selected Zenodo dataset version."""
+        """Download the latest or a selected Zenodo dataset version.
+
+        :param version: Numeric Zenodo record ID, or None for the latest version.
+        :return: GeneJar instance populated with the downloaded datasets.
+        :raises ValueError: If the version, record, URL, or checksum is invalid.
+        :raises FileNotFoundError: If required dataset files are missing.
+        :raises requests.RequestException: If a Zenodo request or download fails.
+        :raises BadZipFile: If the ZIP or nested archive is invalid.
+        :raises KeyError: If required metadata or archive members are missing.
+        :raises OSError: If a filesystem operation fails.
+        """
         return datasets.load_datasets(cls, version=version)
 
     def symbol_categories(self) -> list[str]:
-        """Return the valid gene symbol category names."""
+        """Return the valid gene symbol category names.
+
+        :return: Sorted list of valid gene symbol category names.
+        """
         return sorted(category.value for category in SymbolCategory)
 
     @staticmethod
@@ -223,8 +251,9 @@ class GeneJar:
         :param symbol_category: Symbol category to search.
         :param match_type: Type of matching to perform.
         :param search_column: Symbol column(s) to search.
-        :return: Matching rows.
+        :return: DataFrame containing matching gene records.
         :raises ValueError: If symbol_category, match_type, or search_column is invalid.
+        :raises KeyError: If a required DataFrame column is missing.
         """
         symbol_category = SymbolCategory(symbol_category)
         match_type = MatchType(match_type)
@@ -277,7 +306,9 @@ class GeneJar:
 
         :param symbol: Gene symbol to resolve.
         :param match_type: Type of symbol matching to perform.
-        :return: Ranked candidate genes and their associated identifiers.
+        :return: DataFrame containing ranked candidate genes and their identifiers.
+        :raises ValueError: If match_type is invalid.
+        :raises KeyError: If a required DataFrame column is missing.
         """
         match_type = MatchType(match_type)
         target = symbol.casefold()
@@ -403,7 +434,11 @@ class GeneJar:
         return result.drop(columns="_category_rank")
 
     def _flatten_unique(self, values: pd.Series) -> list[Any]:
-        """Flatten nested identifier values and return unique non-null entries."""
+        """Flatten nested identifier values and return unique non-null entries.
+
+        :param values: Series containing scalar or nested identifier values.
+        :return: List of unique non-null identifiers in their original order.
+        """
         flattened = []
 
         for value in values.dropna():
@@ -415,7 +450,13 @@ class GeneJar:
         return list(dict.fromkeys(flattened))
 
     def ambiguity_check(self, symbol: str) -> AmbiguityResult:
-        """Check whether a symbol is associated with multiple primary genes."""
+        """Check whether a symbol is associated with multiple primary genes.
+
+        :param symbol: Gene symbol to check for ambiguity.
+        :return: AmbiguityResult containing the ambiguity status and gene matches.
+        :raises ValueError: If symbol matching options are invalid.
+        :raises KeyError: If required gene reference columns are missing.
+        """
         gene_match = self.resolve(
             symbol=symbol,
             match_type=MatchType.IDENTICAL,
