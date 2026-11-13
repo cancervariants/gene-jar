@@ -76,7 +76,7 @@ def _mock_zenodo(
     returned_selected_id: str | None = None,
 ):
     """Mock Zenodo latest and record-ID selection without metadata.version."""
-    base_url = f"https://zenodo.org/api/records/{datasets.ZENODO_RECORD_ID}"
+    load_url = f"{datasets.base_url}{datasets.ZENODO_RECORD_ID}"
     checksum = hashlib.md5(payload, usedforsecurity=False).hexdigest()
     calls = {"metadata": [], "downloads": []}
 
@@ -92,8 +92,7 @@ def _mock_zenodo(
                     "checksum": f"md5:{checksum}",
                     "links": {
                         "self": (
-                            f"https://zenodo.org/api/records/{record_id}"
-                            "/files/output.zip/content"
+                            f"{datasets.base_url}{record_id}/files/output.zip/content"
                         )
                     },
                 }
@@ -101,7 +100,7 @@ def _mock_zenodo(
         }
 
     def fake_get(url, **kwargs):
-        if url == base_url:
+        if url == load_url:
             calls["metadata"].append(url)
             metadata = (
                 record(selected_id, selected_concept_id or concept_id)
@@ -109,7 +108,7 @@ def _mock_zenodo(
                 else {"id": datasets.ZENODO_RECORD_ID, "conceptrecid": concept_id}
             )
             return FakeResponse(metadata=metadata)
-        if url == f"{base_url}/versions/latest":
+        if url == f"{load_url}/versions/latest":
             calls["metadata"].append(url)
             return FakeResponse(
                 metadata=record(
@@ -117,9 +116,7 @@ def _mock_zenodo(
                     latest_concept_id if latest_concept_id is not None else concept_id,
                 )
             )
-        if selected_id is not None and url == (
-            f"https://zenodo.org/api/records/{selected_id}"
-        ):
+        if selected_id is not None and url == (f"{datasets.base_url}{selected_id}"):
             calls["metadata"].append(url)
             return FakeResponse(
                 metadata=record(
@@ -251,7 +248,7 @@ def test_download_datasets_loads_selected_version(tmp_path, monkeypatch, isolate
     assert len(calls["downloads"]) == 1
     assert f"/{selected_id}/" in calls["downloads"][0]
     assert (isolated_home / ".cache" / "gene-jar" / selected_id / "output.zip").exists()
-    assert f"https://zenodo.org/api/records/{selected_id}" in calls["metadata"]
+    assert f"{datasets.base_url}{selected_id}" in calls["metadata"]
     assert not any(url.endswith("/versions/latest") for url in calls["metadata"])
 
 
