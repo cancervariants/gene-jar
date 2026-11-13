@@ -19,6 +19,9 @@ class FakeResponse:
     def __init__(self, *, payload: bytes = b"", metadata: dict | None = None):
         self.payload = payload
         self.metadata = metadata
+        self.headers = (
+            {"content-length": str(len(payload))} if payload is not None else {}
+        )
 
     def raise_for_status(self) -> None:
         """Simulate a successful HTTP response."""
