@@ -21,6 +21,8 @@ license-files = ["LICENSE"]
 dependencies = [
     "tables",
     "pandas",
+    "requests>=2.34.2",
+    "tqdm>=4.70.1",
 ]
 dynamic = ["version"]
 

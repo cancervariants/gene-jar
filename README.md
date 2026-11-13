@@ -14,7 +14,48 @@ Given a gene symbol, this package:
 - provides relationships between the gene symbols and their genes, when available
 - provides more detailed information when given the relationship type with the gene symbol
 
-Relationship rank was determined using a test set of ambiguous gene symbols and the highest accurate resolution rate. See [gene jar analysis repo](https://github.com/cancervariants/gene-jar-analysis/tree/09ecaf9fdae49915a6fd35a6830b46c6ae182e2a/analysis/gene_ids_in_lit)
+Relationship rank was determined using a calculated ambiguity score for each relationship category. See [gene jar resources repo](https://github.com/cancervariants/gene-jar-resources/tree/09ecaf9fdae49915a6fd35a6830b46c6ae182e2a/analysis/ranked_category_resolver)
+
+### Annotation dataset sources
+
+Gene JAR separates annotation dataset generation from dataset consumption.
+
+The [gene jar resources repo](https://github.com/cancervariants/gene-jar-resources) repository generates the annotation datasets used by Gene JAR. The generated datasets are published as versioned archives on [Zenodo](https://zenodo.org/records/23965261), allowing annotation data to be updated independently of the `gene-jar` Python package.
+
+The `gene-jar` package provides the Python API for accessing these datasets. Its dataset loader retrieves the latest published Zenodo version, validates the downloaded archive against its published checksum, and caches the extracted files locally.
+
+
+### Downloading Datasets
+
+By default, `GeneJar.download_datasets()` downloads the latest published dataset from Zenodo:
+
+```python
+from gene_jar import GeneJar
+
+jar = GeneJar.download_datasets()
+```
+
+For reproducible analyses, a specific dataset release can be selected using its **Zenodo record ID**:
+
+```python
+jar = GeneJar.download_datasets(version="23965261")
+```
+
+Each published Zenodo version receives a unique record ID. The loader verifies that the selected record belongs to the Gene JAR dataset collection.
+
+**Note:** The `version` parameter accepts a Zenodo record ID, not a semantic version string such as `"1.0.0"`.
+
+### Dataset Caching
+
+Downloaded datasets are stored locally under:
+
+```text
+~/.cache/gene-jar/<record-id>/
+```
+
+The loader validates the downloaded archive against its published Zenodo checksum and extracts the required annotation files. Previously downloaded datasets are reused when the cached archive and extracted files pass the loader's validation checks.
+
+Newly published dataset versions can be retrieved without updating or reinstalling the `gene-jar` Python package.
 
 Resources used for annotations include:
 [Ensembl](https://www.ensembl.org/index.html)
