@@ -21,6 +21,7 @@ ZENODO_RECORD_ID = "23965261"
 MD5_HEX_LENGTH = 32
 NESTED_ZIP_NAME = "output/relationship_annotations.zip"
 NESTED_DATA_DIR = "relationship_annotations"
+base_url = "https://zenodo.org/api/records/"
 
 DATA_FILES = (
     ("primary_df", "summary_df.h5"),
@@ -191,21 +192,21 @@ def load_datasets(
     :raises KeyError: If required metadata or archive members are missing.
     :raises OSError: If a filesystem operation fails.
     """
-    base_url = f"https://zenodo.org/api/records/{ZENODO_RECORD_ID}"
-    base_response = requests.get(base_url, timeout=30)
+    load_url = f"{base_url}{ZENODO_RECORD_ID}"
+    base_response = requests.get(load_url, timeout=30)
     base_response.raise_for_status()
     base_record = base_response.json()
     expected_concept_id = str(base_record["conceptrecid"])
 
     if version is None:
         # Default to the latest published version of this Zenodo dataset.
-        record_url = f"{base_url}/versions/latest"
+        record_url = f"{load_url}/versions/latest"
     else:
         # Zenodo does not require metadata.version; use an immutable record ID.
         if not version.isascii() or not version.isdecimal():
             msg = f"Zenodo version must be a numeric record ID: {version}"
             raise ValueError(msg)
-        record_url = f"https://zenodo.org/api/records/{version}"
+        record_url = f"{base_url}{version}"
 
     response = requests.get(record_url, timeout=30)
     response.raise_for_status()
