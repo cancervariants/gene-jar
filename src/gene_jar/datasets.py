@@ -22,7 +22,7 @@ ZENODO_RECORD_ID = "23965261"
 MD5_HEX_LENGTH = 32
 NESTED_ZIP_NAME = "output/relationship_annotations.zip"
 NESTED_DATA_DIR = "relationship_annotations"
-base_url = "https://zenodo.org/api/records/"
+ZENODO_API_BASE_URL = "https://zenodo.org/api/records/"
 
 DATA_FILES = (
     ("primary_df", "summary_df.h5"),
@@ -126,7 +126,7 @@ def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Pa
 
 
 def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> None:
-    """Stage required HDF5 files from the nested ZIP and publish atomically.
+    """Stage only required HDF5 files from the nested ZIP and publish atomically.
 
     :param zip_path: Path to the verified ZIP archive.
     :param cache_dir: Directory where the extracted files are cached.
@@ -154,6 +154,7 @@ def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> 
         staged_data = Path(temp_name) / "output"
         staged_data.mkdir()
 
+        # Extract only the required HDF5 files, ignoring unrelated archive contents.
         with (
             ZipFile(zip_path) as outer,
             outer.open(NESTED_ZIP_NAME) as nested_stream,
@@ -189,7 +190,7 @@ def load_datasets(
     :raises OSError: If a filesystem operation fails.
     """
     # Resolve and validate the requested Zenodo release.
-    load_url = f"{base_url}{ZENODO_RECORD_ID}"
+    load_url = f"{ZENODO_API_BASE_URL}{ZENODO_RECORD_ID}"
     base_response = requests.get(load_url, timeout=30)
     base_response.raise_for_status()
     base_record = base_response.json()
@@ -203,7 +204,7 @@ def load_datasets(
         if not version.isascii() or not version.isdecimal():
             msg = f"Zenodo version must be a numeric record ID: {version}"
             raise ValueError(msg)
-        record_url = f"{base_url}{version}"
+        record_url = f"{ZENODO_API_BASE_URL}{version}"
 
     response = requests.get(record_url, timeout=30)
     response.raise_for_status()

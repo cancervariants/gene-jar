@@ -112,7 +112,7 @@ class FakeResponse:
 
 
 def _release_zip(tmp_path: Path, *, omit_file: str | None = None) -> bytes:
-    """Build a real-world nested output.zip, including irrelevant macOS metadata."""
+    """Build a Zenodo-style ZIP containing nested annotation datasets."""
     data_dir = tmp_path / "fixture" / "relationship_annotations"
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -121,16 +121,26 @@ def _release_zip(tmp_path: Path, *, omit_file: str | None = None) -> bytes:
         for _, key, filename in EXPECTED_DATA_FILES:
             if filename == omit_file:
                 continue
+
             file_path = data_dir / filename
             pd.DataFrame({"fixture_key": [key]}).to_hdf(file_path, key="df")
-            inner.write(file_path, arcname=f"relationship_annotations/{filename}")
-        inner.writestr("__MACOSX/relationship_annotations/._summary_df.h5", b"metadata")
+            inner.write(
+                file_path,
+                arcname=f"relationship_annotations/{filename}",
+            )
 
     outer_buffer = BytesIO()
     with ZipFile(outer_buffer, "w", compression=ZIP_DEFLATED) as outer:
-        outer.writestr("__MACOSX/._output", b"metadata")
-        outer.writestr("output/relationship_annotations.zip", inner_buffer.getvalue())
-        outer.writestr("output/unrelated_analysis.csv", b"unrelated")
+        outer.writestr(
+            "output/relationship_annotations.zip",
+            inner_buffer.getvalue(),
+        )
+
+        # Include unrelated analysis outputs from the published archive.
+        outer.writestr("output/summary_df.csv", b"unrelated")
+        outer.writestr("output/ortholog_analysis_df.csv", b"unrelated")
+        outer.writestr("output/subset_genes_df.h5", b"unrelated")
+
     return outer_buffer.getvalue()
 
 
@@ -146,7 +156,7 @@ def _mock_zenodo(
     returned_selected_id: str | None = None,
 ):
     """Mock Zenodo latest and record-ID selection without metadata.version."""
-    load_url = f"{datasets.base_url}{datasets.ZENODO_RECORD_ID}"
+    load_url = f"{datasets.ZENODO_API_BASE_URL}{datasets.ZENODO_RECORD_ID}"
     checksum = hashlib.md5(payload, usedforsecurity=False).hexdigest()
     calls = {"metadata": [], "downloads": []}
 
@@ -162,7 +172,7 @@ def _mock_zenodo(
                     "checksum": f"md5:{checksum}",
                     "links": {
                         "self": (
-                            f"{datasets.base_url}{record_id}/files/output.zip/content"
+                            f"{datasets.ZENODO_API_BASE_URL}{record_id}/files/output.zip/content"
                         )
                     },
                 }
@@ -186,7 +196,9 @@ def _mock_zenodo(
                     latest_concept_id if latest_concept_id is not None else concept_id,
                 )
             )
-        if selected_id is not None and url == (f"{datasets.base_url}{selected_id}"):
+        if selected_id is not None and url == (
+            f"{datasets.ZENODO_API_BASE_URL}{selected_id}"
+        ):
             calls["metadata"].append(url)
             return FakeResponse(
                 metadata=record(
@@ -221,9 +233,10 @@ def test_download_datasets_loads_latest_release(tmp_path, monkeypatch, isolated_
     assert isinstance(result, GeneJar)
     _assert_loaded_categories(result)
     assert len(calls["downloads"]) == 1
-    assert (
-        isolated_home / ".cache" / "gene-jar" / "23965261" / "output" / "summary_df.h5"
-    ).is_file()
+    extracted = isolated_home / ".cache" / "gene-jar" / "23965261" / "output"
+    assert (extracted / "summary_df.h5").is_file()
+    assert not (extracted / "subset_genes_df.h5").exists()
+    assert not (extracted / "__pycache__").exists()
 
 
 @pytest.mark.usefixtures("isolated_home")
@@ -321,7 +334,7 @@ def test_download_datasets_loads_selected_version(tmp_path, monkeypatch, isolate
     assert len(calls["downloads"]) == 1
     assert f"/{selected_id}/" in calls["downloads"][0]
     assert (isolated_home / ".cache" / "gene-jar" / selected_id / "output.zip").exists()
-    assert f"{datasets.base_url}{selected_id}" in calls["metadata"]
+    assert f"{datasets.ZENODO_API_BASE_URL}{selected_id}" in calls["metadata"]
     assert not any(url.endswith("/versions/latest") for url in calls["metadata"])
 
 
