@@ -584,6 +584,45 @@ def test_ambiguity_check_ambiguous(gene_jar_factory):
     }
 
 
+def test_gene_group_abl_uses_plural_abbreviations_column(gene_jar_factory):
+    """Resolve ABL using the gene-group column present in the published dataset."""
+    gene_group_df = pd.DataFrame(
+        {
+            "alias_symbol": ["ABL", "ABL"],
+            "primary_gene_symbol": ["ABL1", "ABL2"],
+            "HGNC_ID": ["HGNC:76", "HGNC:77"],
+            "Matching Abbreviations": ["ABL", "ABL"],
+        }
+    )
+    gj = gene_jar_factory(hgnc_gene_group_df=gene_group_df)
+
+    ambiguity = gj.ambiguity_check("ABL")
+
+    assert ambiguity.is_ambiguous is True
+    assert len(ambiguity.gene_matches) == 2
+    assert {gene.primary_gene_symbol for gene in ambiguity.gene_matches} == {
+        "ABL1",
+        "ABL2",
+    }
+    assert {
+        gene.primary_gene_symbol: gene.hgnc_id for gene in ambiguity.gene_matches
+    } == {
+        "ABL1": {"HGNC:76"},
+        "ABL2": {"HGNC:77"},
+    }
+
+    resolved = gj.resolve("ABL").set_index("primary_gene_symbol")
+
+    assert resolved["best_category"].to_dict() == {
+        "ABL1": SymbolCategory.GENE_GROUP,
+        "ABL2": SymbolCategory.GENE_GROUP,
+    }
+    assert resolved["qualifier"].to_dict() == {
+        "ABL1": {"Matching Abbreviations": "ABL"},
+        "ABL2": {"Matching Abbreviations": "ABL"},
+    }
+
+
 def test_ambiguity_check_unknown_symbol(gene_jar_factory):
     """Test that an unknown symbol has no gene matches."""
     gj = gene_jar_factory()
