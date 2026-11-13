@@ -75,31 +75,31 @@ def _verify_checksum(zip_path: Path, expected_checksum: str) -> bool:
 
 
 def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Path:
-    """Reuse a verified ZIP or download and verify a replacement atomically.
+    """Reuse a verified ZIP or atomically download a replacement.
 
     :param url: URL from which to download the ZIP file.
-    :param cache_path: Local path where the verified ZIP file is cached.
+    :param cache_path: Local path for the cached ZIP file.
     :param expected_checksum: Expected Zenodo MD5 checksum.
     :return: Path to the verified cached ZIP file.
-    :raises ValueError: If the checksum is invalid or verification fails.
+    :raises ValueError: If the checksum is malformed or verification fails.
     :raises requests.RequestException: If the download fails.
     :raises OSError: If a filesystem operation fails.
-    :raises BadZipFile: If the ZIP or nested archive is invalid.
-    :raises KeyError: If a required archive member is missing.
     """
     cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Reuse only a checksum-verified archive; invalidate extracted data otherwise.
     if _verify_checksum(cache_path, expected_checksum):
         return cache_path
+    (cache_path.parent / ".extracted_checksum").unlink(missing_ok=True)
 
+    # Download to a temporary file so interrupted transfers never replace the cache.
     fd, name = tempfile.mkstemp(dir=cache_path.parent, suffix=".zip")
     os.close(fd)
     temp_path = Path(name)
     try:
         with requests.get(url, stream=True, timeout=(30, 120)) as response:
             response.raise_for_status()
-
-            total_size = int(response.headers.get("content-length", 0))
-
+            total_size = int(getattr(response, "headers", {}).get("content-length", 0))
             with (
                 temp_path.open("wb") as stream,
                 tqdm(
@@ -115,23 +115,10 @@ def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Pa
                         stream.write(chunk)
                         progress.update(len(chunk))
 
+        # Publish the downloaded archive only after its checksum matches.
         if not _verify_checksum(temp_path, expected_checksum):
             msg = "Downloaded Zenodo ZIP does not match the published checksum"
             raise ValueError(msg)
-
-        # Validate the required nested archive, rather than macOS metadata
-        # members that are irrelevant to Gene JAR.
-        with (
-            ZipFile(temp_path) as outer,
-            outer.open(NESTED_ZIP_NAME) as nested_stream,
-            ZipFile(nested_stream) as inner,
-        ):
-            for _, filename in DATA_FILES:
-                member_name = f"{NESTED_DATA_DIR}/{filename}"
-                with inner.open(member_name) as source:
-                    while source.read(1024 * 1024):
-                        pass
-
         temp_path.replace(cache_path)
     finally:
         temp_path.unlink(missing_ok=True)
@@ -161,6 +148,7 @@ def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> 
     ):
         return
 
+    # Extract required members into a temporary directory, validating as we read.
     marker_path.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(dir=cache_dir, prefix="extract-") as temp_name:
         staged_data = Path(temp_name) / "output"
@@ -177,13 +165,7 @@ def _extract_output(zip_path: Path, cache_dir: Path, expected_checksum: str) -> 
                 with inner.open(member_name) as source, destination.open("wb") as dest:
                     shutil.copyfileobj(source, dest)
 
-        missing = sorted(
-            name for name in required if not (staged_data / name).is_file()
-        )
-        if missing:
-            msg = f"Missing required files in Zenodo ZIP: {missing}"
-            raise FileNotFoundError(msg)
-
+        # Publish only after all required members have been extracted successfully.
         if data_dir.exists():
             shutil.rmtree(data_dir)
         staged_data.replace(data_dir)
@@ -206,6 +188,7 @@ def load_datasets(
     :raises KeyError: If required metadata or archive members are missing.
     :raises OSError: If a filesystem operation fails.
     """
+    # Resolve and validate the requested Zenodo release.
     load_url = f"{base_url}{ZENODO_RECORD_ID}"
     base_response = requests.get(load_url, timeout=30)
     base_response.raise_for_status()
@@ -250,14 +233,10 @@ def load_datasets(
     expected_checksum = zip_file["checksum"]
     cache_dir = Path.home() / ".cache" / "gene-jar" / record_id
     zip_path = cache_dir / "output.zip"
-    zip_was_invalid = zip_path.is_file() and not _verify_checksum(
-        zip_path, expected_checksum
-    )
+    # Verify or download the archive, then reuse or rebuild the extracted files.
     _ensure_zip_cached(download_url, zip_path, expected_checksum)
-    if zip_was_invalid:
-        (cache_dir / ".extracted_checksum").unlink(missing_ok=True)
-
     _extract_output(zip_path, cache_dir, expected_checksum)
+    # Load the extracted HDF5 tables into a GeneJar instance.
     data_dir = cache_dir / "output"
     dataframes = {
         key: pd.read_hdf(data_dir / filename, key="df") for key, filename in DATA_FILES
