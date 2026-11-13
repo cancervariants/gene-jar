@@ -20,19 +20,10 @@ Relationship rank was determined using a calculated ambiguity score for each rel
 
 Gene JAR separates annotation dataset generation from dataset consumption.
 
-The [gene jar resources repo](https://github.com/cancervariants/gene-jar-resources) repository generates the annotation datasets used by Gene JAR. The generated datasets are published as versioned archives on [Zenodo](https://zenodo.org/records/23965261).
+The [gene jar resources repo](https://github.com/cancervariants/gene-jar-resources) repository generates the annotation datasets used by Gene JAR. The generated datasets are published as versioned archives on [Zenodo](https://zenodo.org/records/23965261), allowing annotation data to be updated independently of the `gene-jar` Python package.
 
 The `gene-jar` package provides the Python API for accessing these datasets. Its dataset loader retrieves the latest published Zenodo version, validates the downloaded archive against its published checksum, and caches the extracted files locally.
 
-This separation allows annotation datasets to be updated independently of the `gene-jar` Python package.
-
-## Dataset Sources and Versions
-
-Gene JAR separates annotation dataset generation from dataset consumption.
-
-The [gene-jar-analysis](https://github.com/cancervariants/gene-jar-analysis) repository generates the gene annotation datasets used by Gene JAR. These datasets are published on [Zenodo](https://zenodo.org/records/23965261), allowing annotation data to be updated independently of the `gene-jar` Python package.
-
-The `gene-jar` package provides the Python API for accessing these datasets. It downloads, validates, and caches the published annotation files locally.
 
 ### Downloading Datasets
 
