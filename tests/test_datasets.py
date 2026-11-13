@@ -12,6 +12,76 @@ import pytest
 
 from gene_jar import GeneJar, SymbolCategory, datasets
 
+# Expected archive layout is intentionally independent of production DATA_FILES.
+EXPECTED_DATA_FILES = (
+    (SymbolCategory.PRIMARY, "primary_df", "summary_df.h5"),
+    (SymbolCategory.ORTHOLOG, "ortholog_df", "ortholog_match_subset_genes_df.h5"),
+    (
+        SymbolCategory.CLONE_NAME,
+        "flj_clone_df",
+        "flj_clone_symbol_match_subset_genes_df.h5",
+    ),
+    (SymbolCategory.PHENOTYPE, "phenotype_df", "phenotype_match_subset_genes_df.h5"),
+    (
+        SymbolCategory.GENE_GROUP,
+        "hgnc_gene_group_df",
+        "hgnc_gene_group_match_subset_genes_df.h5",
+    ),
+    (SymbolCategory.GENE_IDENTIFIER, "gene_id_df", "gene_id_match_subset_genes_df.h5"),
+    (
+        SymbolCategory.WITHDRAWN_ORTHOLOG,
+        "mgi_withdrawn_df",
+        "mgi_withdrawn_symbol_match_subset_genes_df.h5",
+    ),
+    (
+        SymbolCategory.RELATED_GENE,
+        "ncbi_related_gene_df",
+        "ncbi_related_gene_match_subset_genes_df.h5",
+    ),
+    (
+        SymbolCategory.GENE_INTERACTION,
+        "ncbi_gene_interaction_df",
+        "ncbi_gene_interaction_symbol_match_subset_genes_df.h5",
+    ),
+    (
+        SymbolCategory.GENE_NEIGHBOR,
+        "ncbi_gene_neighbor_df",
+        "ncbi_gene_neighbor_match_subset_genes_df.h5",
+    ),
+    (
+        SymbolCategory.PLACEHOLDER,
+        "placeholder_df",
+        "placeholder_match_subset_genes_df.h5",
+    ),
+    (
+        SymbolCategory.PREVIOUS,
+        "previous_df",
+        "previous_symbol_match_subset_genes_df.h5",
+    ),
+    (
+        SymbolCategory.PROTEIN_MASS,
+        "protein_mass_df",
+        "protein_mass_match_subset_genes_df.h5",
+    ),
+    (
+        SymbolCategory.ALTERNATE_ABBREVIATION,
+        "alternate_abbreviation_df",
+        "alt_abbrev_symbol_match_subset_genes_df.h5",
+    ),
+)
+
+
+def _assert_loaded_categories(result: GeneJar) -> None:
+    """Check that each category loads its distinct expected archive contents.
+
+    :param result: GeneJar instance loaded from the fixture archive.
+    :return: None.
+    :raises AssertionError: If a category is missing or contains incorrect data.
+    """
+    assert set(result.dfs) == {category for category, _, _ in EXPECTED_DATA_FILES}
+    for category, key, _ in EXPECTED_DATA_FILES:
+        assert result.dfs[category]["fixture_key"].tolist() == [key]
+
 
 class FakeResponse:
     """Minimal requests response supporting JSON and streamed downloads."""
@@ -42,25 +112,35 @@ class FakeResponse:
 
 
 def _release_zip(tmp_path: Path, *, omit_file: str | None = None) -> bytes:
-    """Build a real-world nested output.zip, including irrelevant macOS metadata."""
+    """Build a Zenodo-style ZIP containing nested annotation datasets."""
     data_dir = tmp_path / "fixture" / "relationship_annotations"
     data_dir.mkdir(parents=True, exist_ok=True)
 
     inner_buffer = BytesIO()
     with ZipFile(inner_buffer, "w", compression=ZIP_DEFLATED) as inner:
-        for key, filename in datasets.DATA_FILES:
+        for _, key, filename in EXPECTED_DATA_FILES:
             if filename == omit_file:
                 continue
+
             file_path = data_dir / filename
             pd.DataFrame({"fixture_key": [key]}).to_hdf(file_path, key="df")
-            inner.write(file_path, arcname=f"relationship_annotations/{filename}")
-        inner.writestr("__MACOSX/relationship_annotations/._summary_df.h5", b"metadata")
+            inner.write(
+                file_path,
+                arcname=f"relationship_annotations/{filename}",
+            )
 
     outer_buffer = BytesIO()
     with ZipFile(outer_buffer, "w", compression=ZIP_DEFLATED) as outer:
-        outer.writestr("__MACOSX/._output", b"metadata")
-        outer.writestr("output/relationship_annotations.zip", inner_buffer.getvalue())
-        outer.writestr("output/unrelated_analysis.csv", b"unrelated")
+        outer.writestr(
+            "output/relationship_annotations.zip",
+            inner_buffer.getvalue(),
+        )
+
+        # Include unrelated analysis outputs from the published archive.
+        outer.writestr("output/summary_df.csv", b"unrelated")
+        outer.writestr("output/ortholog_analysis_df.csv", b"unrelated")
+        outer.writestr("output/subset_genes_df.h5", b"unrelated")
+
     return outer_buffer.getvalue()
 
 
@@ -76,7 +156,7 @@ def _mock_zenodo(
     returned_selected_id: str | None = None,
 ):
     """Mock Zenodo latest and record-ID selection without metadata.version."""
-    base_url = f"https://zenodo.org/api/records/{datasets.ZENODO_RECORD_ID}"
+    load_url = f"{datasets.ZENODO_API_BASE_URL}{datasets.ZENODO_RECORD_ID}"
     checksum = hashlib.md5(payload, usedforsecurity=False).hexdigest()
     calls = {"metadata": [], "downloads": []}
 
@@ -92,8 +172,7 @@ def _mock_zenodo(
                     "checksum": f"md5:{checksum}",
                     "links": {
                         "self": (
-                            f"https://zenodo.org/api/records/{record_id}"
-                            "/files/output.zip/content"
+                            f"{datasets.ZENODO_API_BASE_URL}{record_id}/files/output.zip/content"
                         )
                     },
                 }
@@ -101,7 +180,7 @@ def _mock_zenodo(
         }
 
     def fake_get(url, **kwargs):
-        if url == base_url:
+        if url == load_url:
             calls["metadata"].append(url)
             metadata = (
                 record(selected_id, selected_concept_id or concept_id)
@@ -109,7 +188,7 @@ def _mock_zenodo(
                 else {"id": datasets.ZENODO_RECORD_ID, "conceptrecid": concept_id}
             )
             return FakeResponse(metadata=metadata)
-        if url == f"{base_url}/versions/latest":
+        if url == f"{load_url}/versions/latest":
             calls["metadata"].append(url)
             return FakeResponse(
                 metadata=record(
@@ -118,7 +197,7 @@ def _mock_zenodo(
                 )
             )
         if selected_id is not None and url == (
-            f"https://zenodo.org/api/records/{selected_id}"
+            f"{datasets.ZENODO_API_BASE_URL}{selected_id}"
         ):
             calls["metadata"].append(url)
             return FakeResponse(
@@ -152,11 +231,12 @@ def test_download_datasets_loads_latest_release(tmp_path, monkeypatch, isolated_
     result = GeneJar.download_datasets()
 
     assert isinstance(result, GeneJar)
-    assert result.dfs[SymbolCategory.PRIMARY].loc[0, "fixture_key"] == "primary_df"
+    _assert_loaded_categories(result)
     assert len(calls["downloads"]) == 1
-    assert (
-        isolated_home / ".cache" / "gene-jar" / "23965261" / "output" / "summary_df.h5"
-    ).is_file()
+    extracted = isolated_home / ".cache" / "gene-jar" / "23965261" / "output"
+    assert (extracted / "summary_df.h5").is_file()
+    assert not (extracted / "subset_genes_df.h5").exists()
+    assert not (extracted / "__pycache__").exists()
 
 
 @pytest.mark.usefixtures("isolated_home")
@@ -170,8 +250,8 @@ def test_download_datasets_reuses_cached_datasets(tmp_path, monkeypatch):
     assert isinstance(first, GeneJar)
     assert isinstance(second, GeneJar)
     assert len(calls["downloads"]) == 1
-    assert len(calls["metadata"]) == 4
-    assert second.dfs[SymbolCategory.PRIMARY].loc[0, "fixture_key"] == "primary_df"
+    _assert_loaded_categories(first)
+    _assert_loaded_categories(second)
 
 
 def test_download_datasets_recovers_from_corrupt_cache(
@@ -188,7 +268,7 @@ def test_download_datasets_recovers_from_corrupt_cache(
     assert isinstance(result, GeneJar)
     assert len(calls["downloads"]) == 1
     assert (cache_dir / "output.zip").read_bytes() == payload
-    assert result.dfs[SymbolCategory.PRIMARY].loc[0, "fixture_key"] == "primary_df"
+    _assert_loaded_categories(result)
 
 
 @pytest.mark.usefixtures("isolated_home")
@@ -233,6 +313,8 @@ def test_download_datasets_uses_new_record_cache(tmp_path, monkeypatch, isolated
 
     assert isinstance(first, GeneJar)
     assert isinstance(second, GeneJar)
+    _assert_loaded_categories(first)
+    _assert_loaded_categories(second)
     assert len(first_calls["downloads"]) == 1
     assert len(second_calls["downloads"]) == 1
     assert (isolated_home / ".cache" / "gene-jar" / "23965261" / "output.zip").exists()
@@ -248,10 +330,11 @@ def test_download_datasets_loads_selected_version(tmp_path, monkeypatch, isolate
     result = GeneJar.download_datasets(version=selected_id)
 
     assert isinstance(result, GeneJar)
+    _assert_loaded_categories(result)
     assert len(calls["downloads"]) == 1
     assert f"/{selected_id}/" in calls["downloads"][0]
     assert (isolated_home / ".cache" / "gene-jar" / selected_id / "output.zip").exists()
-    assert f"https://zenodo.org/api/records/{selected_id}" in calls["metadata"]
+    assert f"{datasets.ZENODO_API_BASE_URL}{selected_id}" in calls["metadata"]
     assert not any(url.endswith("/versions/latest") for url in calls["metadata"])
 
 
