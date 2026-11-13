@@ -160,7 +160,7 @@ class GeneJar:
         self.qualifier_map: dict[SymbolCategory, str] = {
             SymbolCategory.ORTHOLOG: "Matching Species",
             SymbolCategory.PHENOTYPE: "Matching Phenotype Symbol",
-            SymbolCategory.GENE_GROUP: "Matching Abbreviation",
+            SymbolCategory.GENE_GROUP: "Matching Abbreviations",
             SymbolCategory.GENE_IDENTIFIER: "Identifier Match Source",
             SymbolCategory.RELATED_GENE: "Relationship",
             SymbolCategory.GENE_NEIGHBOR: "neighbor_gene_type",

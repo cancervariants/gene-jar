@@ -13,6 +13,7 @@ from zipfile import ZipFile
 
 import pandas as pd
 import requests
+from tqdm.auto import tqdm
 
 if TYPE_CHECKING:
     from . import GeneJar
@@ -96,10 +97,23 @@ def _ensure_zip_cached(url: str, cache_path: Path, expected_checksum: str) -> Pa
     try:
         with requests.get(url, stream=True, timeout=(30, 120)) as response:
             response.raise_for_status()
-            with temp_path.open("wb") as stream:
+
+            total_size = int(response.headers.get("content-length", 0))
+
+            with (
+                temp_path.open("wb") as stream,
+                tqdm(
+                    total=total_size or None,
+                    unit="B",
+                    unit_scale=True,
+                    unit_divisor=1024,
+                    desc="Downloading Gene JAR datasets",
+                ) as progress,
+            ):
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if chunk:
                         stream.write(chunk)
+                        progress.update(len(chunk))
 
         if not _verify_checksum(temp_path, expected_checksum):
             msg = "Downloaded Zenodo ZIP does not match the published checksum"
