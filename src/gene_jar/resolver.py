@@ -1,14 +1,15 @@
 """Utilities for resolving gene symbols across multiple harmonized reference datasets."""
 
+import ast
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, ClassVar, Literal
+from typing import ClassVar, Literal
 
 import pandas as pd
 
 
 class MatchType(StrEnum):
-    """Match options"""
+    """Match options."""
 
     IDENTICAL = "identical"
     PARTIAL = "partial"
@@ -62,21 +63,10 @@ class AmbiguityResult:
 class GeneJar:
     """Resolve gene symbols across multiple harmonized gene reference datasets.
 
-    :param primary_df: DataFrame containing primary gene symbols. Must include
-        ``gene_symbol`` and ``primary_gene_symbol``.
-    :param ortholog_df: DataFrame containing ortholog symbols.
-    :param flj_clone_df: DataFrame containing FLJ clone symbols.
-    :param phenotype_df: DataFrame containing phenotype-related prefix symbols.
-    :param hgnc_gene_group_df: DataFrame containing HGNC gene group symbols.
-    :param gene_id_df: DataFrame containing gene identifier symbols.
-    :param mgi_withdrawn_df: DataFrame containing withdrawn MGI symbols.
-    :param ncbi_related_gene_df: DataFrame containing NCBI gene records that are related.
-    :param ncbi_gene_interaction_df: DataFrame containing NCBI gene interaction symbols.
-    :param ncbi_gene_neighbor_df: DataFrame containing NCBI gene neighbor symbols.
-    :param placeholder_df: DataFrame containing placeholder symbols.
-    :param previous_df: DataFrame containing previous gene symbols.
-    :param protein_mass_df: DataFrame containing protein mass symbols.
-    :param alternate_abbreviation_df: DataFrame containing alternate abbreviation symbols
+    ``context`` changes ranking priorities across all relationship categories.
+    ``strict_context`` restricts which relationship categories are searched.
+
+    These parameters are mutually exclusive.
     """
 
     RANK_ORDER: ClassVar[list[SymbolCategory]] = [
@@ -97,7 +87,7 @@ class GeneJar:
     ]
 
     CONTEXT_RANK_ORDERS: ClassVar[dict[str, list[SymbolCategory]]] = {
-        # human: HGNC-associated relationships prioritized
+        # Human: HGNC-associated relationships prioritized.
         "human": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -114,7 +104,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
-        # non_human: Ortholog and withdrawn ortholog relationships promoted
+        # Non-human: Ortholog relationships prioritized.
         "non_human": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -131,7 +121,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
-        # historical: Previous and withdrawn symbols promoted
+        # Historical: Previous and withdrawn relationships prioritized.
         "historical": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -148,7 +138,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
-        # clinical: Phenotype relationships promoted
+        # Clinical: Phenotype relationships prioritized.
         "clinical": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -165,7 +155,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
-        # protein: 	Protein mass relationships promoted
+        # Protein: Protein mass relationships prioritized.
         "protein": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -183,6 +173,62 @@ class GeneJar:
             SymbolCategory.GENE_NEIGHBOR,
         ],
     }
+
+    STRICT_CONTEXT_GROUPS: ClassVar[dict[str, set[SymbolCategory]]] = {
+        "ortholog": {
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+        },
+        "previous symbols": {
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+        },
+    }
+
+    SymbolCategoryOption = Literal[
+        "Primary Gene Symbol",
+        "Ortholog Symbol",
+        "Clone Name Symbol",
+        "Phenotype Symbol",
+        "Gene Group Symbol",
+        "Gene Identifier Symbol",
+        "Withdrawn Ortholog Symbol",
+        "Related Gene Symbol",
+        "Gene Interaction Symbol",
+        "Gene Neighbor Symbol",
+        "Placeholder Symbol",
+        "Previous Symbol",
+        "Protein Mass Symbol",
+        "Alternate Abbreviation Symbol",
+    ]
+
+    StrictContextOption = Literal[
+        "ortholog",
+        "previous symbols",
+        "Primary Gene Symbol",
+        "Ortholog Symbol",
+        "Clone Name Symbol",
+        "Phenotype Symbol",
+        "Gene Group Symbol",
+        "Gene Identifier Symbol",
+        "Withdrawn Ortholog Symbol",
+        "Related Gene Symbol",
+        "Gene Interaction Symbol",
+        "Gene Neighbor Symbol",
+        "Placeholder Symbol",
+        "Previous Symbol",
+        "Protein Mass Symbol",
+        "Alternate Abbreviation Symbol",
+    ]
+
+    ResolutionContext = Literal[
+        "default",
+        "human",
+        "non_human",
+        "historical",
+        "clinical",
+        "protein",
+    ]
 
     def __init__(
         self,
@@ -202,9 +248,7 @@ class GeneJar:
         protein_mass_df: pd.DataFrame,
         alternate_abbreviation_df: pd.DataFrame,
     ):
-        """Initialize with dataframes.
-        primary_df and ortholog_df must have columns: 'gene_symbol', 'primary_gene_symbol'
-        """
+        """Initialize with harmonized relationship DataFrames."""
         self.dfs: dict[SymbolCategory, pd.DataFrame] = {
             SymbolCategory.PRIMARY: primary_df,
             SymbolCategory.ORTHOLOG: ortholog_df,
@@ -221,6 +265,19 @@ class GeneJar:
             SymbolCategory.PROTEIN_MASS: protein_mass_df,
             SymbolCategory.ALTERNATE_ABBREVIATION: alternate_abbreviation_df,
         }
+
+        # Normalize identifier columns across all reference datasets.
+        # Copy DataFrames to preserve the original input data.
+        for category, df in self.dfs.items():
+            normalized_df = df.copy()
+
+            for column in ("HGNC_ID", "NCBI_ID", "ENSG_ID"):
+                if column in normalized_df.columns:
+                    normalized_df[column] = normalized_df[column].map(
+                        self._parse_serialized_identifier_set
+                    )
+
+            self.dfs[category] = normalized_df
 
         self.column_map: dict[SymbolCategory, str] = {
             SymbolCategory.PRIMARY: "primary_gene_symbol",
@@ -245,24 +302,45 @@ class GeneJar:
         }
 
     def symbol_categories(self) -> list[str]:
-        """Return the valid gene symbol category names."""
+        """Return the valid individual gene symbol category names."""
         return sorted(category.value for category in SymbolCategory)
+
+    @staticmethod
+    def _parse_serialized_identifier_set(value: object) -> object:
+        """Convert serialized Python sets into actual sets.
+
+        Handles non-empty sets such as "{'HGNC:5'}"
+        and empty sets represented by "set()".
+
+        Other values are returned unchanged.
+        """
+        if isinstance(value, str):
+            stripped = value.strip()
+
+            if stripped == "set()":
+                return set()
+
+            if stripped.startswith("{"):
+                try:
+                    parsed = ast.literal_eval(stripped)
+                except (ValueError, SyntaxError):
+                    return value
+
+                if isinstance(parsed, set):
+                    return parsed
+
+        return value
 
     @staticmethod
     def _identifier_set(
         group: pd.DataFrame,
         column: str,
     ) -> set[str]:
-        """Return the unique non-null identifiers in a candidate group.
-
-        :param group: Rows associated with one candidate gene.
-        :param column: Identifier column to combine.
-        :return: Unique identifiers represented as strings.
-        """
+        """Return unique non-null identifiers for a candidate gene."""
         if column not in group:
             return set()
 
-        identifiers = set()
+        identifiers: set[str] = set()
 
         for value in group[column].dropna():
             if isinstance(value, (set, list, tuple)):
@@ -275,33 +353,12 @@ class GeneJar:
         return identifiers
 
     @staticmethod
-    def _has_qualifier(value: str | list[str]) -> bool:
-        """Return whether a qualifier value is non-null and non-empty.
-
-        :param value: Qualifier value to check.
-        :return: True if a list is non-empty or a scalar value is non-null.
-        """
+    def _has_qualifier(value: object) -> bool:
+        """Return whether a qualifier is non-null and non-empty."""
         if isinstance(value, list):
             return len(value) > 0
 
-        return pd.notna(value)
-
-    SymbolCategoryOption = Literal[
-        "Primary Gene Symbol",
-        "Ortholog Symbol",
-        "Clone Name Symbol",
-        "Phenotype Symbol",
-        "Gene Group Symbol",
-        "Gene Identifier Symbol",
-        "Withdrawn Ortholog Symbol",
-        "Related Gene Symbol",
-        "Gene Interaction Symbol",
-        "Gene Neighbor Symbol",
-        "Placeholder Symbol",
-        "Previous Symbol",
-        "Protein Mass Symbol",
-        "Alternate Abbreviation Symbol",
-    ]
+        return bool(pd.notna(value))
 
     def lookup(
         self,
@@ -310,15 +367,7 @@ class GeneJar:
         match_type: MatchType = MatchType.IDENTICAL,
         search_column: SearchColumn = SearchColumn.BOTH,
     ) -> pd.DataFrame:
-        """Lookup a gene symbol from a specific symbol category.
-
-        :param symbol: Gene symbol to search for.
-        :param symbol_category: Symbol category to search.
-        :param match_type: Type of matching to perform.
-        :param search_column: Symbol column(s) to search.
-        :return: Matching rows.
-        :raises ValueError: If symbol_category, match_type, or search_column is invalid.
-        """
+        """Lookup a gene symbol in one specific relationship category."""
         symbol_category = SymbolCategory(symbol_category)
         match_type = MatchType(match_type)
         search_column = SearchColumn(search_column)
@@ -326,10 +375,11 @@ class GeneJar:
         df = self.dfs[symbol_category]
         target = symbol.casefold()
 
-        if symbol_category == SymbolCategory.PRIMARY:
-            symbol_column = "gene_symbol"
-        else:
-            symbol_column = "alias_symbol"
+        symbol_column = (
+            "gene_symbol"
+            if symbol_category == SymbolCategory.PRIMARY
+            else "alias_symbol"
+        )
 
         symbols = df[symbol_column].astype("string").str.casefold()
         primary_symbols = df["primary_gene_symbol"].astype("string").str.casefold()
@@ -338,7 +388,11 @@ class GeneJar:
             symbol_mask = symbols.eq(target).fillna(False)
             primary_mask = primary_symbols.eq(target).fillna(False)
         else:
-            symbol_mask = symbols.str.contains(target, regex=False, na=False)
+            symbol_mask = symbols.str.contains(
+                target,
+                regex=False,
+                na=False,
+            )
             primary_mask = primary_symbols.str.contains(
                 target,
                 regex=False,
@@ -354,39 +408,31 @@ class GeneJar:
 
         return df.loc[mask].copy()
 
-    ResolutionContext = Literal[
-        "default",
-        "human",
-        "non_human",
-        "historical",
-        "clinical",
-        "protein",
-    ]
-
     def resolve(
         self,
         symbol: str,
         match_type: MatchType = MatchType.IDENTICAL,
         *,
-        context: ResolutionContext = "default",
-    ) -> pd.DataFrame:
-        """Resolve a symbol and return ranked candidate genes.
+        context: ResolutionContext | None = None,
+        strict_context: SymbolCategory | StrictContextOption | None = None,
+    ) -> pd.DataFrame | str:
+        """Resolve a symbol into ranked candidate genes.
 
-        Each relationship DataFrame is searched independently. The relationship
-        category represented by the DataFrame is assigned to each matching
-        candidate gene. Candidates are ranked using their highest-priority matched
-        relationship category. When candidates share the same highest-priority
-        category, the candidate with more matched relationship categories is
-        ranked first.
+        ``context`` changes ranking priorities across all relationships.
+        ``strict_context`` restricts the search to selected categories.
 
-        :param symbol: Gene symbol to resolve.
-        :param match_type: Type of symbol matching to perform.
-        :param context: Ranking context: default, human, non_human, historical,
-            clinical, or protein.
-        :return: Ranked candidate genes and their associated identifiers.
+        The parameters are mutually exclusive.
+
+        If a strict-context search has no matches, return a descriptive string.
+        Otherwise, no matches return an empty DataFrame.
         """
         match_type = MatchType(match_type)
-        if context == "default":
+
+        if context is not None and strict_context is not None:
+            msg = "context and strict_context are mutually exclusive; provide only one."
+            raise ValueError(msg)
+
+        if context is None or context == "default":
             rank_map = self.rank_map
         else:
             try:
@@ -394,14 +440,31 @@ class GeneJar:
             except (KeyError, TypeError):
                 msg = f"Invalid context: {context!r}"
                 raise ValueError(msg) from None
+
             rank_map = {category: rank for rank, category in enumerate(rank_order)}
 
+        if strict_context is None:
+            search_categories = set(self.dfs)
+        elif (
+            isinstance(strict_context, str)
+            and strict_context in self.STRICT_CONTEXT_GROUPS
+        ):
+            search_categories = self.STRICT_CONTEXT_GROUPS[strict_context]
+        else:
+            try:
+                search_categories = {SymbolCategory(strict_context)}
+            except (ValueError, TypeError):
+                msg = f"Invalid strict_context: {strict_context!r}"
+                raise ValueError(msg) from None
+
         target = symbol.casefold()
-        matches = []
+        matches: list[pd.DataFrame] = []
 
         for category, df in self.dfs.items():
-            symbol_column = self.column_map[category]
+            if category not in search_categories:
+                continue
 
+            symbol_column = self.column_map[category]
             normalized_symbols = df[symbol_column].astype("string").str.casefold()
 
             if match_type is MatchType.IDENTICAL:
@@ -418,7 +481,6 @@ class GeneJar:
             if category_matches.empty:
                 continue
 
-            # Record exactly why this row matched.
             category_matches["matched_category"] = category.value
             category_matches["matched_symbol"] = category_matches[symbol_column]
 
@@ -437,6 +499,9 @@ class GeneJar:
             matches.append(category_matches)
 
         if not matches:
+            if strict_context is not None:
+                return f'No {strict_context} matching "{symbol}"'
+
             return pd.DataFrame(
                 columns=[
                     "candidate_rank",
@@ -446,6 +511,7 @@ class GeneJar:
                     "ENSG_ID",
                     "best_category",
                     "qualifier",
+                    "matched_symbol",
                     "matched_categories",
                     "relationship_count",
                 ]
@@ -469,10 +535,9 @@ class GeneJar:
             )
 
             best_category = matched_categories[0]
-
             best_category_rows = group[group["matched_category"] == best_category]
 
-            qualifier = {}
+            qualifier: dict[str, object] = {}
 
             for value in best_category_rows["qualifier"]:
                 qualifier.update(value)
@@ -518,7 +583,7 @@ class GeneJar:
 
         return result.drop(columns="_category_rank")
 
-    def _flatten_unique(self, values: pd.Series) -> list[Any]:
+    def _flatten_unique(self, values: pd.Series) -> list[object]:
         """Flatten nested identifier values and return unique non-null entries."""
         flattened = []
 
