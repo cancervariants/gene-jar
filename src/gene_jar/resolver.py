@@ -225,6 +225,94 @@ class GeneJar:
         "protein",
     ]
 
+    CONTEXT_RANK_ORDERS: ClassVar[dict[str, list[SymbolCategory]]] = {
+        # human: HGNC-associated relationships prioritized
+        "human": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # non_human: Ortholog and withdrawn ortholog relationships promoted
+        "non_human": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # historical: Previous and withdrawn symbols promoted
+        "historical": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # clinical: Phenotype relationships promoted
+        "clinical": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # protein: 	Protein mass relationships promoted
+        "protein": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+    }
+
     def __init__(
         self,
         *,
@@ -356,6 +444,23 @@ class GeneJar:
 
         return bool(pd.notna(value))
 
+    SymbolCategoryOption = Literal[
+        "Primary Gene Symbol",
+        "Ortholog Symbol",
+        "Clone Name Symbol",
+        "Phenotype Symbol",
+        "Gene Group Symbol",
+        "Gene Identifier Symbol",
+        "Withdrawn Ortholog Symbol",
+        "Related Gene Symbol",
+        "Gene Interaction Symbol",
+        "Gene Neighbor Symbol",
+        "Placeholder Symbol",
+        "Previous Symbol",
+        "Protein Mass Symbol",
+        "Alternate Abbreviation Symbol",
+    ]
+
     def lookup(
         self,
         symbol: str,
@@ -403,6 +508,15 @@ class GeneJar:
             mask = symbol_mask | primary_mask
 
         return df.loc[mask].copy()
+
+    ResolutionContext = Literal[
+        "default",
+        "human",
+        "non_human",
+        "historical",
+        "clinical",
+        "protein",
+    ]
 
     def resolve(
         self,
