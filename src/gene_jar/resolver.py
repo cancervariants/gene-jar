@@ -85,19 +85,19 @@ class GeneJar:
 
     RANK_ORDER: ClassVar[list[SymbolCategory]] = [
         SymbolCategory.PRIMARY,
-        SymbolCategory.PREVIOUS,
-        SymbolCategory.CLONE_NAME,
         SymbolCategory.GENE_IDENTIFIER,
-        SymbolCategory.PLACEHOLDER,
-        SymbolCategory.ORTHOLOG,
-        SymbolCategory.ALTERNATE_ABBREVIATION,
         SymbolCategory.WITHDRAWN_ORTHOLOG,
+        SymbolCategory.CLONE_NAME,
         SymbolCategory.PHENOTYPE,
+        SymbolCategory.PLACEHOLDER,
+        SymbolCategory.PREVIOUS,
+        SymbolCategory.ALTERNATE_ABBREVIATION,
+        SymbolCategory.ORTHOLOG,
         SymbolCategory.GENE_GROUP,
-        SymbolCategory.PROTEIN_MASS,
         SymbolCategory.RELATED_GENE,
-        SymbolCategory.GENE_NEIGHBOR,
+        SymbolCategory.PROTEIN_MASS,
         SymbolCategory.GENE_INTERACTION,
+        SymbolCategory.GENE_NEIGHBOR,
     ]
 
     def __init__(
