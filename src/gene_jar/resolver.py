@@ -87,6 +87,7 @@ class GeneJar:
     ]
 
     CONTEXT_RANK_ORDERS: ClassVar[dict[str, list[SymbolCategory]]] = {
+        # Human: HGNC-associated relationships prioritized.
         "human": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -103,6 +104,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
+        # Non-human: Ortholog relationships prioritized.
         "non_human": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -119,6 +121,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
+        # Historical: Previous and withdrawn relationships prioritized.
         "historical": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -135,6 +138,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
+        # Clinical: Phenotype relationships prioritized.
         "clinical": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -151,6 +155,7 @@ class GeneJar:
             SymbolCategory.GENE_INTERACTION,
             SymbolCategory.GENE_NEIGHBOR,
         ],
+        # Protein: Protein mass relationships prioritized.
         "protein": [
             SymbolCategory.PRIMARY,
             SymbolCategory.GENE_IDENTIFIER,
@@ -225,94 +230,6 @@ class GeneJar:
         "protein",
     ]
 
-    CONTEXT_RANK_ORDERS: ClassVar[dict[str, list[SymbolCategory]]] = {
-        # human: HGNC-associated relationships prioritized
-        "human": [
-            SymbolCategory.PRIMARY,
-            SymbolCategory.GENE_IDENTIFIER,
-            SymbolCategory.PHENOTYPE,
-            SymbolCategory.PREVIOUS,
-            SymbolCategory.GENE_GROUP,
-            SymbolCategory.WITHDRAWN_ORTHOLOG,
-            SymbolCategory.CLONE_NAME,
-            SymbolCategory.PLACEHOLDER,
-            SymbolCategory.ALTERNATE_ABBREVIATION,
-            SymbolCategory.ORTHOLOG,
-            SymbolCategory.RELATED_GENE,
-            SymbolCategory.PROTEIN_MASS,
-            SymbolCategory.GENE_INTERACTION,
-            SymbolCategory.GENE_NEIGHBOR,
-        ],
-        # non_human: Ortholog and withdrawn ortholog relationships promoted
-        "non_human": [
-            SymbolCategory.PRIMARY,
-            SymbolCategory.GENE_IDENTIFIER,
-            SymbolCategory.WITHDRAWN_ORTHOLOG,
-            SymbolCategory.ORTHOLOG,
-            SymbolCategory.CLONE_NAME,
-            SymbolCategory.PHENOTYPE,
-            SymbolCategory.PLACEHOLDER,
-            SymbolCategory.PREVIOUS,
-            SymbolCategory.ALTERNATE_ABBREVIATION,
-            SymbolCategory.GENE_GROUP,
-            SymbolCategory.RELATED_GENE,
-            SymbolCategory.PROTEIN_MASS,
-            SymbolCategory.GENE_INTERACTION,
-            SymbolCategory.GENE_NEIGHBOR,
-        ],
-        # historical: Previous and withdrawn symbols promoted
-        "historical": [
-            SymbolCategory.PRIMARY,
-            SymbolCategory.GENE_IDENTIFIER,
-            SymbolCategory.WITHDRAWN_ORTHOLOG,
-            SymbolCategory.PREVIOUS,
-            SymbolCategory.CLONE_NAME,
-            SymbolCategory.PHENOTYPE,
-            SymbolCategory.PLACEHOLDER,
-            SymbolCategory.ALTERNATE_ABBREVIATION,
-            SymbolCategory.ORTHOLOG,
-            SymbolCategory.GENE_GROUP,
-            SymbolCategory.RELATED_GENE,
-            SymbolCategory.PROTEIN_MASS,
-            SymbolCategory.GENE_INTERACTION,
-            SymbolCategory.GENE_NEIGHBOR,
-        ],
-        # clinical: Phenotype relationships promoted
-        "clinical": [
-            SymbolCategory.PRIMARY,
-            SymbolCategory.GENE_IDENTIFIER,
-            SymbolCategory.PHENOTYPE,
-            SymbolCategory.WITHDRAWN_ORTHOLOG,
-            SymbolCategory.CLONE_NAME,
-            SymbolCategory.PLACEHOLDER,
-            SymbolCategory.PREVIOUS,
-            SymbolCategory.ALTERNATE_ABBREVIATION,
-            SymbolCategory.ORTHOLOG,
-            SymbolCategory.GENE_GROUP,
-            SymbolCategory.RELATED_GENE,
-            SymbolCategory.PROTEIN_MASS,
-            SymbolCategory.GENE_INTERACTION,
-            SymbolCategory.GENE_NEIGHBOR,
-        ],
-        # protein: 	Protein mass relationships promoted
-        "protein": [
-            SymbolCategory.PRIMARY,
-            SymbolCategory.GENE_IDENTIFIER,
-            SymbolCategory.PROTEIN_MASS,
-            SymbolCategory.GENE_GROUP,
-            SymbolCategory.WITHDRAWN_ORTHOLOG,
-            SymbolCategory.CLONE_NAME,
-            SymbolCategory.PHENOTYPE,
-            SymbolCategory.PLACEHOLDER,
-            SymbolCategory.PREVIOUS,
-            SymbolCategory.ALTERNATE_ABBREVIATION,
-            SymbolCategory.ORTHOLOG,
-            SymbolCategory.RELATED_GENE,
-            SymbolCategory.GENE_INTERACTION,
-            SymbolCategory.GENE_NEIGHBOR,
-        ],
-    }
-
     def __init__(
         self,
         *,
@@ -349,8 +266,8 @@ class GeneJar:
             SymbolCategory.ALTERNATE_ABBREVIATION: alternate_abbreviation_df,
         }
 
-        # Normalize identifiers across all reference datasets.
-        # Copy each DataFrame to preserve the original input data.
+        # Normalize identifier columns across all reference datasets.
+        # Copy DataFrames to preserve the original input data.
         for category, df in self.dfs.items():
             normalized_df = df.copy()
 
@@ -392,10 +309,10 @@ class GeneJar:
     def _parse_serialized_identifier_set(value: object) -> object:
         """Convert serialized Python sets into actual sets.
 
-        Handles non-empty set representations such as "{'HGNC:5'}"
-        and empty set representations such as "set()".
+        Handles non-empty sets such as "{'HGNC:5'}"
+        and empty sets represented by "set()".
 
-        Values that are not serialized sets are returned unchanged.
+        Other values are returned unchanged.
         """
         if isinstance(value, str):
             stripped = value.strip()
@@ -406,12 +323,11 @@ class GeneJar:
             if stripped.startswith("{"):
                 try:
                     parsed = ast.literal_eval(stripped)
-
-                    if isinstance(parsed, set):
-                        return parsed
-
                 except (ValueError, SyntaxError):
-                    pass
+                    return value
+
+                if isinstance(parsed, set):
+                    return parsed
 
         return value
 
@@ -443,23 +359,6 @@ class GeneJar:
             return len(value) > 0
 
         return bool(pd.notna(value))
-
-    SymbolCategoryOption = Literal[
-        "Primary Gene Symbol",
-        "Ortholog Symbol",
-        "Clone Name Symbol",
-        "Phenotype Symbol",
-        "Gene Group Symbol",
-        "Gene Identifier Symbol",
-        "Withdrawn Ortholog Symbol",
-        "Related Gene Symbol",
-        "Gene Interaction Symbol",
-        "Gene Neighbor Symbol",
-        "Placeholder Symbol",
-        "Previous Symbol",
-        "Protein Mass Symbol",
-        "Alternate Abbreviation Symbol",
-    ]
 
     def lookup(
         self,
@@ -509,15 +408,6 @@ class GeneJar:
 
         return df.loc[mask].copy()
 
-    ResolutionContext = Literal[
-        "default",
-        "human",
-        "non_human",
-        "historical",
-        "clinical",
-        "protein",
-    ]
-
     def resolve(
         self,
         symbol: str,
@@ -528,12 +418,12 @@ class GeneJar:
     ) -> pd.DataFrame | str:
         """Resolve a symbol into ranked candidate genes.
 
-        ``context`` changes rank priorities across all relationships.
-        ``context`` and ``strict_context`` cannot be supplied together.
+        ``context`` changes ranking priorities across all relationships.
+        ``strict_context`` restricts the search to selected categories.
 
-        ``strict_context`` restricts the search to a category or named group.
+        The parameters are mutually exclusive.
 
-        If a strict search has no matches, return a descriptive string.
+        If a strict-context search has no matches, return a descriptive string.
         Otherwise, no matches return an empty DataFrame.
         """
         match_type = MatchType(match_type)
@@ -555,13 +445,11 @@ class GeneJar:
 
         if strict_context is None:
             search_categories = set(self.dfs)
-
         elif (
             isinstance(strict_context, str)
             and strict_context in self.STRICT_CONTEXT_GROUPS
         ):
             search_categories = self.STRICT_CONTEXT_GROUPS[strict_context]
-
         else:
             try:
                 search_categories = {SymbolCategory(strict_context)}
@@ -647,7 +535,6 @@ class GeneJar:
             )
 
             best_category = matched_categories[0]
-
             best_category_rows = group[group["matched_category"] == best_category]
 
             qualifier: dict[str, object] = {}
