@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 import pandas as pd
 
@@ -81,20 +81,108 @@ class GeneJar:
 
     RANK_ORDER: ClassVar[list[SymbolCategory]] = [
         SymbolCategory.PRIMARY,
-        SymbolCategory.PREVIOUS,
-        SymbolCategory.CLONE_NAME,
         SymbolCategory.GENE_IDENTIFIER,
-        SymbolCategory.PLACEHOLDER,
-        SymbolCategory.ORTHOLOG,
-        SymbolCategory.ALTERNATE_ABBREVIATION,
         SymbolCategory.WITHDRAWN_ORTHOLOG,
+        SymbolCategory.CLONE_NAME,
         SymbolCategory.PHENOTYPE,
+        SymbolCategory.PLACEHOLDER,
+        SymbolCategory.PREVIOUS,
+        SymbolCategory.ALTERNATE_ABBREVIATION,
+        SymbolCategory.ORTHOLOG,
         SymbolCategory.GENE_GROUP,
-        SymbolCategory.PROTEIN_MASS,
         SymbolCategory.RELATED_GENE,
-        SymbolCategory.GENE_NEIGHBOR,
+        SymbolCategory.PROTEIN_MASS,
         SymbolCategory.GENE_INTERACTION,
+        SymbolCategory.GENE_NEIGHBOR,
     ]
+
+    CONTEXT_RANK_ORDERS: ClassVar[dict[str, list[SymbolCategory]]] = {
+        # human: HGNC-associated relationships prioritized
+        "human": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # non_human: Ortholog and withdrawn ortholog relationships promoted
+        "non_human": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # historical: Previous and withdrawn symbols promoted
+        "historical": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # clinical: Phenotype relationships promoted
+        "clinical": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+        # protein: 	Protein mass relationships promoted
+        "protein": [
+            SymbolCategory.PRIMARY,
+            SymbolCategory.GENE_IDENTIFIER,
+            SymbolCategory.PROTEIN_MASS,
+            SymbolCategory.GENE_GROUP,
+            SymbolCategory.WITHDRAWN_ORTHOLOG,
+            SymbolCategory.CLONE_NAME,
+            SymbolCategory.PHENOTYPE,
+            SymbolCategory.PLACEHOLDER,
+            SymbolCategory.PREVIOUS,
+            SymbolCategory.ALTERNATE_ABBREVIATION,
+            SymbolCategory.ORTHOLOG,
+            SymbolCategory.RELATED_GENE,
+            SymbolCategory.GENE_INTERACTION,
+            SymbolCategory.GENE_NEIGHBOR,
+        ],
+    }
 
     def __init__(
         self,
@@ -198,10 +286,27 @@ class GeneJar:
 
         return pd.notna(value)
 
+    SymbolCategoryOption = Literal[
+        "Primary Gene Symbol",
+        "Ortholog Symbol",
+        "Clone Name Symbol",
+        "Phenotype Symbol",
+        "Gene Group Symbol",
+        "Gene Identifier Symbol",
+        "Withdrawn Ortholog Symbol",
+        "Related Gene Symbol",
+        "Gene Interaction Symbol",
+        "Gene Neighbor Symbol",
+        "Placeholder Symbol",
+        "Previous Symbol",
+        "Protein Mass Symbol",
+        "Alternate Abbreviation Symbol",
+    ]
+
     def lookup(
         self,
         symbol: str,
-        symbol_category: SymbolCategory = SymbolCategory.PRIMARY,
+        symbol_category: SymbolCategory | SymbolCategoryOption = SymbolCategory.PRIMARY,
         match_type: MatchType = MatchType.IDENTICAL,
         search_column: SearchColumn = SearchColumn.BOTH,
     ) -> pd.DataFrame:
@@ -249,10 +354,21 @@ class GeneJar:
 
         return df.loc[mask].copy()
 
+    ResolutionContext = Literal[
+        "default",
+        "human",
+        "non_human",
+        "historical",
+        "clinical",
+        "protein",
+    ]
+
     def resolve(
         self,
         symbol: str,
         match_type: MatchType = MatchType.IDENTICAL,
+        *,
+        context: ResolutionContext = "default",
     ) -> pd.DataFrame:
         """Resolve a symbol and return ranked candidate genes.
 
@@ -265,9 +381,21 @@ class GeneJar:
 
         :param symbol: Gene symbol to resolve.
         :param match_type: Type of symbol matching to perform.
+        :param context: Ranking context: default, human, non_human, historical,
+            clinical, or protein.
         :return: Ranked candidate genes and their associated identifiers.
         """
         match_type = MatchType(match_type)
+        if context == "default":
+            rank_map = self.rank_map
+        else:
+            try:
+                rank_order = self.CONTEXT_RANK_ORDERS[context]
+            except (KeyError, TypeError):
+                msg = f"Invalid context: {context!r}"
+                raise ValueError(msg) from None
+            rank_map = {category: rank for rank, category in enumerate(rank_order)}
+
         target = symbol.casefold()
         matches = []
 
@@ -337,7 +465,7 @@ class GeneJar:
         ):
             matched_categories = sorted(
                 group["matched_category"].dropna().unique(),
-                key=lambda category: self.rank_map[SymbolCategory(category)],
+                key=lambda category: rank_map[SymbolCategory(category)],
             )
 
             best_category = matched_categories[0]
@@ -362,7 +490,7 @@ class GeneJar:
                     "matched_symbol": matched_symbols,
                     "matched_categories": matched_categories,
                     "relationship_count": len(matched_categories),
-                    "_category_rank": self.rank_map[SymbolCategory(best_category)],
+                    "_category_rank": rank_map[SymbolCategory(best_category)],
                 }
             )
 
